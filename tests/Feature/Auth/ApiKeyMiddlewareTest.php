@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Auth;
+
+use App\Services\Auth\ApiKeyService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+final class ApiKeyMiddlewareTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_missing_api_key_returns_unauthorized_problem_without_data(): void
+    {
+        $response = $this->getJson('/api/v1/auth/verify');
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('type', 'unauthorized')
+            ->assertJsonMissingPath('data');
+    }
+
+    public function test_wrong_api_key_returns_unauthorized_problem_without_data(): void
+    {
+        $response = $this->getJson('/api/v1/auth/verify', [
+            'X-API-Key' => 'jvm_' . fake()->sha256(),
+        ]);
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('type', 'unauthorized')
+            ->assertJsonMissingPath('data');
+    }
+
+    public function test_revoked_api_key_returns_unauthorized_problem_without_data(): void
+    {
+        $service = app(ApiKeyService::class);
+        $created = $service->create(fake()->words(2, true));
+
+        $service->revoke((int) $created->model->getKey());
+
+        $response = $this->getJson('/api/v1/auth/verify', [
+            'X-API-Key' => $created->plaintext,
+        ]);
+
+        $response->assertUnauthorized()
+            ->assertJsonPath('type', 'unauthorized')
+            ->assertJsonMissingPath('data');
+    }
+
+    public function test_valid_api_key_logs_successful_usage(): void
+    {
+        $created = app(ApiKeyService::class)->create(fake()->words(2, true));
+
+        $response = $this->getJson('/api/v1/auth/verify', [
+            'X-API-Key' => $created->plaintext,
+        ]);
+
+        $response->assertOk()->assertJsonPath('data.status', 'ok');
+        $this->assertDatabaseHas('api_usage_log', [
+            'api_key_id' => $created->model->getKey(),
+            'endpoint' => '/api/v1/auth/verify',
+            'method' => 'GET',
+            'status_code' => 200,
+        ]);
+    }
+}

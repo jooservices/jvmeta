@@ -1,0 +1,149 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Search;
+
+use App\Models\Performer;
+use App\Models\Movie;
+use App\Observability\ObservabilityEmitter;
+use DateTimeInterface;
+use Illuminate\Support\Facades\Http;
+use Throwable;
+
+/**
+ * Elasticsearch index for search; documents carry uuid linking back to Postgres.
+ */
+final class ElasticsearchIndexer
+{
+    public function indexMovie(Movie $movie): void
+    {
+        $movie->loadMissing(['genres', 'performers']);
+
+        $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, [
+            'movie_id' => $movie->id,
+            'uuid' => $movie->uuid,
+            'code' => $movie->display_code,
+            'code_normalized' => $movie->code_normalized,
+            'title_jp' => $movie->title_jp,
+            'title_en' => $movie->title_en,
+            'description' => $movie->description,
+            'maker' => $movie->maker,
+            'label' => $movie->label,
+            'series' => $movie->series,
+            'genres' => $movie->genres->pluck('label_normalized')->filter()->values()->all(),
+            'performer_names' => $movie->performers
+                ->map(static fn(Performer $p): string => (string) ($p->name_romaji ?? $p->name_kanji ?? ''))
+                ->filter()
+                ->values()
+                ->all(),
+            'release_date' => $this->dateString($movie->getAttribute('release_date')),
+            'runtime_minutes' => $movie->runtime_minutes,
+            'censored' => $movie->censored,
+            'community_score' => $movie->community_score !== null ? (float) $movie->community_score : null,
+            'updated_at' => $this->dateTimeString($movie->getAttribute('updated_at')),
+            'crawled_at' => $this->dateTimeString($movie->getAttribute('crawled_at')),
+        ]);
+    }
+
+    public function indexPerformer(Performer $performer): void
+    {
+        $performer->loadMissing('aliases');
+
+        $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, [
+            'performer_id' => $performer->id,
+            'uuid' => $performer->uuid,
+            'name_romaji' => $performer->name_romaji,
+            'name_kanji' => $performer->name_kanji,
+            'name_kana' => $performer->name_kana,
+            'aliases' => $performer->aliases->pluck('alias')->filter()->values()->all(),
+            'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
+            'cup' => $performer->cup,
+            'location' => $performer->location,
+            'updated_at' => $this->dateTimeString($performer->getAttribute('updated_at')),
+        ]);
+    }
+
+    /**
+     * @return list<string> uuids
+     */
+    public function searchMovieUuids(string $query, int $size = 20): array
+    {
+        $index = (string) config('elasticsearch.movies_index');
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+
+        try {
+            $response = Http::timeout(5)->post("{$host}/{$index}/_search", [
+                'size' => $size,
+                'query' => [
+                    'multi_match' => [
+                        'query' => $query,
+                        'fields' => [
+                            'code^5',
+                            'code_normalized^5',
+                            'title_jp^3',
+                            'title_en^3',
+                            'performer_names^2',
+                            'maker',
+                            'label',
+                            'series',
+                            'genres',
+                            'description',
+                        ],
+                    ],
+                ],
+            ]);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $hits = $response->json('hits.hits') ?? [];
+            $uuids = [];
+            foreach ($hits as $hit) {
+                $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
+                if (is_string($uuid) && $uuid !== '') {
+                    $uuids[] = $uuid;
+                }
+            }
+
+            return $uuids;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /** @param array<string, mixed> $body */
+    private function put(string $index, string $id, array $body): void
+    {
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+        $started = hrtime(true);
+
+        try {
+            $response = Http::timeout(5)->put("{$host}/{$index}/_doc/{$id}", $body);
+            app(ObservabilityEmitter::class)->emitDependency(
+                'elasticsearch',
+                'index',
+                $response->successful(),
+                (int) round((hrtime(true) - $started) / 1_000_000),
+            );
+        } catch (Throwable) {
+            app(ObservabilityEmitter::class)->emitDependency(
+                'elasticsearch',
+                'index',
+                false,
+                (int) round((hrtime(true) - $started) / 1_000_000),
+            );
+        }
+    }
+
+    private function dateString(mixed $value): ?string
+    {
+        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : null;
+    }
+
+    private function dateTimeString(mixed $value): ?string
+    {
+        return $value instanceof DateTimeInterface ? $value->format(DATE_ATOM) : null;
+    }
+}

@@ -1,0 +1,45 @@
+<?php
+
+declare(strict_types=1);
+
+return [
+    /*
+    |--------------------------------------------------------------------------
+    | Default channels
+    |--------------------------------------------------------------------------
+    |
+    | Channel names used when Notification::send() is called without an
+    | explicit channels list. Each name must match a registered adapter.
+    |
+    */
+    'default_channels' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('NOTIFICATION_DEFAULT_CHANNELS', 'telegram')),
+    ))),
+
+    'channels' => [
+        'telegram' => [
+            'bot_token' => env('NOTIFICATION_TELEGRAM_BOT_TOKEN', env('TELEGRAM_BOT_TOKEN', '')),
+            'chat_id' => env('NOTIFICATION_TELEGRAM_CHAT_ID', env('TELEGRAM_CHAT_ID', '')),
+            'api_base' => env('NOTIFICATION_TELEGRAM_API_BASE', 'https://api.telegram.org'),
+            'timeout' => (float) env('NOTIFICATION_TELEGRAM_TIMEOUT', 5),
+        ],
+
+        'slack' => [
+            'webhook_url' => env('NOTIFICATION_SLACK_WEBHOOK_URL', ''),
+            'timeout' => (float) env('NOTIFICATION_SLACK_TIMEOUT', 5),
+        ],
+
+        'mail' => [
+            'mailer' => env('NOTIFICATION_MAIL_MAILER'),
+            'to' => array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) env('NOTIFICATION_MAIL_TO', '')),
+            ))),
+            'from' => [
+                'address' => env('NOTIFICATION_MAIL_FROM_ADDRESS', env('MAIL_FROM_ADDRESS')),
+                'name' => env('NOTIFICATION_MAIL_FROM_NAME', env('MAIL_FROM_NAME')),
+            ],
+        ],
+    ],
+];

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+docker compose run --rm --no-deps api vendor/bin/captainhook install --force --skip-existing
+
+for hook in .git/hooks/*; do
+    if [ -f "$hook" ] && grep -q 'vendor/bin/captainhook' "$hook" 2>/dev/null; then
+        sed -i '' 's|vendor/bin/captainhook|tools/run-captainhook|g' "$hook"
+    fi
+done
+
+echo "Git hooks installed (CaptainHook via Docker: tools/run-captainhook)"
