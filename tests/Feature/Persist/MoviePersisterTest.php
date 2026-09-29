@@ -240,6 +240,41 @@ final class MoviePersisterTest extends TestCase
         $this->assertDatabaseHas('performers', ['source_slug' => 'onejav', 'external_id' => 'p1']);
     }
 
+    public function test_re_persist_same_movie_and_performer_does_not_throw(): void
+    {
+        $base = [
+            'code' => 'SSIS-001',
+            'performers' => [PerformerDraft::from('javdb', 'p1', 'Same Name')],
+        ];
+
+        $movie = $this->persister()->persist($this->draft($base));
+        $this->persister()->persist($this->draft($base + [
+            'crawled_at' => CarbonImmutable::parse('2026-09-18 10:30:00'),
+        ]));
+
+        $this->assertSame(1, Performer::query()->count());
+        $this->assertSame(1, MoviePerformer::query()->count());
+        $this->assertDatabaseHas('movie_performers', ['movie_id' => $movie->id]);
+        $this->assertSame('2026-09-18 10:30:00', MoviePerformer::query()->firstOrFail()->crawled_at?->format('Y-m-d H:i:s'));
+    }
+
+    public function test_re_persist_same_movie_and_genre_does_not_throw(): void
+    {
+        $base = [
+            'code' => 'SSIS-001',
+            'genres' => ['Drama'],
+        ];
+
+        $movie = $this->persister()->persist($this->draft($base));
+        $this->persister()->persist($this->draft($base + [
+            'crawled_at' => CarbonImmutable::parse('2026-09-18 10:30:00'),
+        ]));
+
+        $this->assertSame(1, Genre::query()->count());
+        $this->assertSame(1, MovieGenre::query()->count());
+        $this->assertDatabaseHas('movie_genres', ['movie_id' => $movie->id]);
+    }
+
     public function test_performer_aliases_are_created(): void
     {
         $movie = $this->persister()->persist($this->draft([

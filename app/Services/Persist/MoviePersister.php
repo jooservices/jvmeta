@@ -355,9 +355,17 @@ final class MoviePersister implements MovieDraftSink
                 ['label_raw' => trim($label)],
             );
 
-            MovieGenre::query()->updateOrCreate(
-                ['movie_id' => $movieId, 'genre_id' => (int) $genre->id, 'source_slug' => $draft->sourceSlug],
-                ['crawled_at' => $crawledAt],
+            MovieGenre::query()->upsert(
+                [
+                    [
+                        'movie_id' => $movieId,
+                        'genre_id' => (int) $genre->id,
+                        'source_slug' => $draft->sourceSlug,
+                        'crawled_at' => $crawledAt,
+                    ],
+                ],
+                ['movie_id', 'genre_id', 'source_slug'],
+                ['crawled_at'],
             );
         }
     }
@@ -409,9 +417,17 @@ final class MoviePersister implements MovieDraftSink
                 );
             }
 
-            MoviePerformer::query()->updateOrCreate(
-                ['movie_id' => $movieId, 'performer_id' => (int) $performer->id],
-                ['source_slug' => $draft->sourceSlug, 'crawled_at' => $crawledAt],
+            MoviePerformer::query()->upsert(
+                [
+                    [
+                        'movie_id' => $movieId,
+                        'performer_id' => (int) $performer->id,
+                        'source_slug' => $draft->sourceSlug,
+                        'crawled_at' => $crawledAt,
+                    ],
+                ],
+                ['movie_id', 'performer_id'],
+                ['source_slug', 'crawled_at'],
             );
         }
     }
