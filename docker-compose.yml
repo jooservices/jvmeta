@@ -29,38 +29,30 @@ x-app-environment: &app-environment
   CRAWLERX_NODE: node
   CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/crawlerx/scripts/playwright-fetch.mjs
   CRAWLERX_PUPPETEER_SCRIPT: /var/www/crawlerx/scripts/puppeteer-stealth-fetch.mjs
-  CRAWLERX_FLARESOLVERR_URL: http://flaresolverr:8191/v1
+  CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  JVMETA_FETCH_PROFILE: browser_likely
-  JVMETA_WORKERS_PER_QUEUE: "1"
-  JVMETA_QUEUE_NAMES: listing,detail,performer_listing,performer_detail,gallery
-  OPENOBSERVE_URL: http://openobserve:5080
-  OPENOBSERVE_ORG: default
-  OPENOBSERVE_STREAM_LOGS: jvmeta_logs
-  OPENOBSERVE_STREAM_METRICS: jvmeta_metrics
+  JVMETA_FETCH_PROFILE: ${JVMETA_FETCH_PROFILE:-browser_likely}
+  JVMETA_WORKERS_PER_QUEUE: ${JVMETA_WORKERS_PER_QUEUE:-1}
+  JVMETA_QUEUE_NAMES: ${JVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}
+  OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
+  OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://openobserve:5080}
+  OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}
+  OPENOBSERVE_STREAM_LOGS: ${OPENOBSERVE_STREAM_LOGS:-jvmeta_logs}
+  OPENOBSERVE_STREAM_METRICS: ${OPENOBSERVE_STREAM_METRICS:-jvmeta_metrics}
 
 x-worker: &worker
   image: jooservices/jvmeta:php85
   working_dir: /var/www/html
-  entrypoint: ["crawlerx-fetch-ready"]
-  command: ["worker-queues"]
+  entrypoint: ["ready-check"]
+  command: ["crawlerx-fetch-ready", "worker-queues"]
   env_file:
     - .env
   environment:
     <<: *app-environment
   volumes: *app-volumes
-  depends_on:
-    postgres:
-      condition: service_healthy
-    mongo:
-      condition: service_healthy
-    elasticsearch:
-      condition: service_healthy
-    flaresolverr:
-      condition: service_started
-    openobserve:
-      condition: service_started
   restart: unless-stopped
+  profiles:
+    - app
 
 services:
   api:
@@ -68,94 +60,52 @@ services:
       context: .
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    command: php artisan serve --host=0.0.0.0 --port=8080
+    entrypoint: ["ready-check"]
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
+    volumes: *app-volumes
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      openobserve:
-        condition: service_started
+    restart: unless-stopped
+    profiles:
+      - app
 
-  # Instance 1 — 5 queues × 1 worker
   worker:
     <<: *worker
-    hostname: jvmeta-worker-1
-
-  # Instance 2 — same queue set (shared pool)
-  worker-2:
-    <<: *worker
-    hostname: jvmeta-worker-2
 
   scheduler:
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    command: php artisan schedule:work
+    entrypoint: ["ready-check"]
+    command: ["php", "artisan", "schedule:work"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      openobserve:
-        condition: service_started
+    volumes: *app-volumes
+    restart: unless-stopped
+    profiles:
+      - control
 
   mcp:
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    command: php artisan mcp:serve
+    entrypoint: ["ready-check"]
+    command: ["php", "artisan", "mcp:serve"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
+    volumes: *app-volumes
     stdin_open: true
     tty: true
+    restart: unless-stopped
     profiles:
+      - control
       - mcp
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
 
   postgres:
     image: postgres:17
@@ -172,6 +122,8 @@ services:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - ./data/postgres/pgdata:/var/lib/postgresql/data
+    profiles:
+      - data
 
   mongo:
     image: mongo:7
@@ -183,7 +135,9 @@ services:
     ports:
       - "${MONGO_HOST_PORT:-27017}:27017"
     volumes:
-      - ./data/mongo/db:/data/db
+      - mongo-db-data:/data/db
+    profiles:
+      - data
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
@@ -202,6 +156,8 @@ services:
       - "${ELASTICSEARCH_HOST_PORT:-9200}:9200"
     volumes:
       - ./data/elasticsearch/data:/usr/share/elasticsearch/data
+    profiles:
+      - data
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.4.1
@@ -211,6 +167,8 @@ services:
     ports:
       - "8191:8191"
     restart: unless-stopped
+    profiles:
+      - flare
 
   openobserve:
     image: openobserve/openobserve:v0.92.0
@@ -224,13 +182,10 @@ services:
       - "5080:5080"
     volumes:
       - ./data/openobserve:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5080/healthz >/dev/null 2>&1 || curl -fsS http://127.0.0.1:5080/healthz >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     restart: unless-stopped
+    profiles:
+      - openobserve
 
 volumes:
   playwright-browsers:
+  mongo-db-data:

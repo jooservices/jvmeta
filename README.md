@@ -44,12 +44,12 @@ Status: POC — branch model may be bypassed
 | Store | Role | Data path |
 |---|---|---|
 | Postgres | System of record (`movies` = movies, performers, pivots) | Lookup / detail |
-| MongoDB | Per-site archive (flexible; not end-user) | `./data/mongo` |
+| MongoDB | Per-site archive (flexible; not end-user) | volume `jvmeta_mongo-db-data` |
 | Elasticsearch | Search index → returns `uuid` → hydrate PG | `./data/elasticsearch` |
 
 **Search:** `ES → uuid → Postgres → respond`  
 **Lookup by code:** Postgres only  
-**Persistence:** host bind mounts under `./data/*` survive `docker compose down` / container recreate (do **not** use `docker compose down -v` or delete `./data`)
+**Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
 
 ## Observability (OpenObserve)
 
@@ -73,12 +73,29 @@ cp -n .env.example .env
 
 make build
 make install
-make up                 # api + workers + scheduler + postgres + mongo + elasticsearch + flaresolverr + openobserve
+make up                 # app (api/worker×N/scheduler) + postgres + mongo + elasticsearch + flaresolverr + openobserve
 make migrate
 make crawl-tick         # enqueue all sites
 make crawl-dispatch     # claim buffer → named Laravel queues
-# 2 worker instances × 5 queues (listing|detail|performer_listing|performer_detail|gallery) × 1 process
+# N worker containers (JVMETA_WORKER_INSTANCES) × 5 queues × JVMETA_WORKERS_PER_QUEUE processes
 ```
+
+**Compose profiles** — every service is grouped so a stack can mix bundled-Docker and external services:
+
+| Profile | Services | Usage |
+|---|---|---|
+| `app` | `api`, `worker` | App containers (crawling; needed everywhere) |
+| `data` | `postgres`, `mongo`, `elasticsearch` | Data layer (can be external) |
+| `openobserve` | `openobserve` | Observability (can be external) |
+| `flare` | `flaresolverr` | Cloudflare bypass for crawling (can be external) |
+| `control` | `scheduler`, `mcp` | Control-plane: run on **ONE** instance only (scheduler duplicates jobs/alerts) |
+| `mcp` | `mcp` | On-demand MCP server (stdio) |
+
+- Local (develop default): `make up` = `docker compose --profile app,data,openobserve,flare,control up -d`.
+- Production crawler instance: `make up-crawler` = `--profile app,flare` (no scheduler).
+- Production control instance (one only): `make up-control` = `--profile app,control` (scheduler + mcp).
+- External mode (data/obs/flare point to remote endpoints via `.env`): `make up-ext` = `--profile app up -d` — no bundled DB/obs/flare containers run.
+- Boot gate: each app container runs `ready-check` first; if any **required** endpoint (DB, Mongo, ES, OpenObserve when enabled, FlareSolverr) is unreachable after retries it exits → container down. `OPENOBSERVE_ENABLED=false` skips the OpenObserve check.
 
 API (create key first via admin token):
 
@@ -109,12 +126,15 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 
 | Target | Meaning |
 |---|---|
-| `make up` / `down` | Start/stop stack (keeps `./data`) |
+| `make up` / `down` | Start/stop full local stack (keeps `./data`) |
+| `make up-ext` | External mode: only `app` containers (data/obs/flare external) |
+| `make up-crawler` | Production crawler instance: `app,flare` |
+| `make up-control` | Production control instance (one only): `app,control` (scheduler + mcp) |
 | `make migrate` | Run migrations |
 | `make crawl-tick` | Enqueue listings for all enabled sites |
 | `make crawl-dispatch` | Buffer → Laravel jobs on named queues |
 | `make crawl-source SITE=onejav` | One site |
-| `make worker` | Start/restart both worker instances |
+| `make worker` | Start/restart worker containers (`JVMETA_WORKER_INSTANCES`) |
 | `make scheduler` | One-off scheduler |
 | `make test` / `lint` / `analyse` | Quality |
 

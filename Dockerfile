@@ -43,7 +43,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY docker/crawlerx-fetch-ready.sh /usr/local/bin/crawlerx-fetch-ready
 COPY docker/worker-queues.sh /usr/local/bin/worker-queues
-RUN chmod +x /usr/local/bin/crawlerx-fetch-ready /usr/local/bin/worker-queues
+COPY docker/ready-check.sh /usr/local/bin/ready-check
+RUN chmod +x /usr/local/bin/crawlerx-fetch-ready /usr/local/bin/worker-queues /usr/local/bin/ready-check
 
 ENV CRAWLERX_ROOT=/var/www/crawlerx \
     CRAWLERX_NODE=node \
