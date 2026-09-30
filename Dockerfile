@@ -46,10 +46,10 @@ COPY docker/worker-queues.sh /usr/local/bin/worker-queues
 COPY docker/ready-check.sh /usr/local/bin/ready-check
 RUN chmod +x /usr/local/bin/crawlerx-fetch-ready /usr/local/bin/worker-queues /usr/local/bin/ready-check
 
-ENV CRAWLERX_ROOT=/var/www/crawlerx \
+ENV CRAWLERX_ROOT=/var/www/html/vendor/jooservices/crawlerx \
     CRAWLERX_NODE=node \
-    CRAWLERX_PLAYWRIGHT_SCRIPT=/var/www/crawlerx/scripts/playwright-fetch.mjs \
-    CRAWLERX_PUPPETEER_SCRIPT=/var/www/crawlerx/scripts/puppeteer-stealth-fetch.mjs \
+    CRAWLERX_PLAYWRIGHT_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs \
+    CRAWLERX_PUPPETEER_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs \
     CRAWLERX_FLARESOLVERR_URL=http://flaresolverr:8191/v1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 

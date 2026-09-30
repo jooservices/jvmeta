@@ -1,6 +1,5 @@
 x-app-volumes: &app-volumes
   - .:/var/www/html
-  - ../crawlerx:/var/www/crawlerx
   - ../client:/var/www/client:ro
   - ../dto:/var/www/dto:ro
   - ../exceptions:/var/www/exceptions:ro
@@ -25,10 +24,10 @@ x-app-environment: &app-environment
   ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-http://elasticsearch:9200}
   ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-jvmeta_movies}
   ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-jvmeta_performers}
-  CRAWLERX_ROOT: /var/www/crawlerx
+  CRAWLERX_ROOT: /var/www/html/vendor/jooservices/crawlerx
   CRAWLERX_NODE: node
-  CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/crawlerx/scripts/playwright-fetch.mjs
-  CRAWLERX_PUPPETEER_SCRIPT: /var/www/crawlerx/scripts/puppeteer-stealth-fetch.mjs
+  CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs
+  CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
   CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   JVMETA_FETCH_PROFILE: ${JVMETA_FETCH_PROFILE:-browser_likely}
