@@ -9,9 +9,22 @@ x-app-volumes: &app-volumes
   - playwright-browsers:/ms-playwright
 
 x-app-environment: &app-environment
-  DB_HOST: postgres
-  MONGO_HOST: mongo
-  ELASTICSEARCH_HOST: http://elasticsearch:9200
+  DB_CONNECTION: ${DB_CONNECTION:-pgsql}
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_DATABASE: ${DB_DATABASE:-jvmeta}
+  DB_USERNAME: ${DB_USERNAME:-jvmeta}
+  DB_PASSWORD: ${DB_PASSWORD:-jvmeta}
+  DB_SSLMODE: ${DB_SSLMODE:-prefer}
+  MONGO_URI: ${MONGO_URI:-}
+  MONGO_HOST: ${MONGO_HOST:-mongo}
+  MONGO_PORT: ${MONGO_PORT:-27017}
+  MONGO_DATABASE: ${MONGO_DATABASE:-jvmeta_archive}
+  ACTIVITY_LOG_CONNECTION: ${ACTIVITY_LOG_CONNECTION:-mongodb}
+  ACTIVITY_LOG_COLLECTION: ${ACTIVITY_LOG_COLLECTION:-activity_logs}
+  ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-http://elasticsearch:9200}
+  ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-jvmeta_movies}
+  ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-jvmeta_performers}
   CRAWLERX_ROOT: /var/www/crawlerx
   CRAWLERX_NODE: node
   CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/crawlerx/scripts/playwright-fetch.mjs
@@ -147,16 +160,16 @@ services:
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: jvmeta
-      POSTGRES_USER: jvmeta
-      POSTGRES_PASSWORD: jvmeta
+      POSTGRES_DB: ${DB_DATABASE:-jvmeta}
+      POSTGRES_USER: ${DB_USERNAME:-jvmeta}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jvmeta}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jvmeta -d jvmeta"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-jvmeta} -d ${DB_DATABASE:-jvmeta}"]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - ./data/postgres/pgdata:/var/lib/postgresql/data
 
@@ -168,7 +181,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "27017:27017"
+      - "${MONGO_HOST_PORT:-27017}:27017"
     volumes:
       - ./data/mongo/db:/data/db
 
@@ -186,7 +199,7 @@ services:
       retries: 20
       start_period: 60s
     ports:
-      - "9200:9200"
+      - "${ELASTICSEARCH_HOST_PORT:-9200}:9200"
     volumes:
       - ./data/elasticsearch/data:/usr/share/elasticsearch/data
 

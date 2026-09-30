@@ -36,7 +36,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && pecl install mongodb \
     && docker-php-ext-enable mongodb \
-    && docker-php-ext-install intl pcntl pdo_pgsql \
+    && docker-php-ext-install intl pcntl pdo_pgsql pdo_mysql \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
