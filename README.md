@@ -111,6 +111,18 @@ docker compose --profile mcp run --rm mcp
 # tools: lookup_movies, get_movie, lookup_performers, get_performer
 ```
 
+**MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
+
+```bash
+curl -s -H "X-Api-Key: $JVMETA_MCP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  http://localhost:8080/api/v1/mcp
+```
+
+- Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Any active API key (`X-Api-Key` header) works.
+- AI clients connect to `https://<host>/api/v1/mcp` via the CF tunnel (port 8080) — no local process needed.
+
 ## Fetch / CF bypass
 
 Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/stealth → FlareSolverr).

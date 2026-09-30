@@ -58,6 +58,7 @@ final class ConsumerMissAlertTest extends TestCase
             ->build();
 
         config([
+            'jvmeta_alerts.enabled' => true,
             'jvmeta_alerts.telegram.bot_token' => 'test-token',
             'jvmeta_alerts.telegram.chat_id' => '12345',
             'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',

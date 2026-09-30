@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\HealthController;
+use App\Http\Controllers\McpHttpController;
 use App\Http\Controllers\MetaGenreController;
 use App\Http\Controllers\MovieBulkController;
 use App\Http\Controllers\MovieLookupController;
@@ -34,6 +35,8 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         });
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {
+            Route::match(['get', 'post'], 'mcp', McpHttpController::class);
+
             Route::get('performers', [PerformerController::class, 'index']);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
 

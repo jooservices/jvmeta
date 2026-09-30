@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Auth\ApiKeyService;
-use App\Services\Mcp\McpToolService;
+use App\Services\Mcp\McpRequestHandler;
 use Illuminate\Console\Command;
-use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -21,9 +19,9 @@ final class McpServeCommand extends Command
 
     protected $description = 'Serve JVMeta MCP tools over stdin/stdout (JSON-RPC).';
 
-    public function handle(ApiKeyService $apiKeys, McpToolService $tools): int
+    public function handle(McpRequestHandler $handler): int
     {
-        if (! $this->authenticate($apiKeys)) {
+        if (! $handler->isAuthorized()) {
             $this->error('MCP auth failed: set JVMETA_MCP_API_KEY to an active jvm_… API key.');
 
             return self::FAILURE;
@@ -46,111 +44,29 @@ final class McpServeCommand extends Command
                 /** @var array<string, mixed> $message */
                 $message = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
             } catch (Throwable) {
-                $this->writeRpcError(null, -32700, 'Parse error');
+                $this->writeRpc($handler->error(null, -32700, 'Parse error'));
 
                 continue;
             }
 
-            $id = $message['id'] ?? null;
-            $method = $message['method'] ?? null;
-
-            if (! is_string($method)) {
-                $this->writeRpcError($id, -32600, 'Invalid Request');
+            if (! is_array($message)) {
+                $this->writeRpc($handler->error(null, -32600, 'Invalid Request'));
 
                 continue;
             }
 
-            try {
-                $result = match ($method) {
-                    'initialize' => [
-                        'protocolVersion' => '2024-11-05',
-                        'capabilities' => ['tools' => (object) []],
-                        'serverInfo' => ['name' => 'jvmeta', 'version' => '0.1.0-beta'],
-                    ],
-                    'notifications/initialized', 'initialized' => null,
-                    'tools/list' => ['tools' => $tools->definitions()],
-                    'tools/call' => $this->callTool(
-                        is_array($message['params'] ?? null) ? $message['params'] : [],
-                        $tools,
-                        $apiKeys,
-                    ),
-                    'ping' => (object) [],
-                    default => throw new InvalidArgumentException("Method not found: {$method}"),
-                };
-            } catch (Throwable $e) {
-                if ($method === 'notifications/initialized' || $method === 'initialized') {
-                    continue;
-                }
-                $this->writeRpcError($id, -32601, $e->getMessage());
-
-                continue;
+            $response = $handler->handle($message);
+            if ($response !== null) {
+                $this->writeRpc($response);
             }
-
-            if ($result === null || ! array_key_exists('id', $message)) {
-                continue;
-            }
-
-            $this->writeRpc(['jsonrpc' => '2.0', 'id' => $id, 'result' => $result]);
         }
 
         return self::SUCCESS;
-    }
-
-    private function authenticate(ApiKeyService $apiKeys): bool
-    {
-        $plain = (string) config('jvmeta_auth.mcp_api_key', '');
-        if ($plain === '') {
-            return false;
-        }
-
-        return $apiKeys->findActiveByPlaintext($plain) !== null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $params
-     * @return array{content: list<array{type: string, text: string}>, isError?: bool}
-     */
-    private function callTool(array $params, McpToolService $tools, ApiKeyService $apiKeys): array
-    {
-        if (! $this->authenticate($apiKeys)) {
-            return [
-                'content' => [['type' => 'text', 'text' => json_encode(['error' => 'unauthorized'], JSON_UNESCAPED_UNICODE) ?: '{}']],
-                'isError' => true,
-            ];
-        }
-
-        $name = $params['name'] ?? null;
-        $arguments = is_array($params['arguments'] ?? null) ? $params['arguments'] : [];
-
-        if (is_string($name) && $name !== '') {
-            app(\App\Observability\ObservabilityEmitter::class)->emitOps('mcp_tool', ['tool' => $name]);
-        }
-
-        $payload = is_string($name) && $name !== ''
-            ? $tools->call($name, $arguments)
-            : ['error' => 'tool name required'];
-
-        return [
-            'content' => [[
-                'type' => 'text',
-                'text' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?: '{}',
-            ]],
-            'isError' => isset($payload['error']),
-        ];
     }
 
     /** @param array<string, mixed> $payload */
     private function writeRpc(array $payload): void
     {
         fwrite(STDOUT, json_encode($payload, JSON_UNESCAPED_UNICODE) . "\n");
-    }
-
-    private function writeRpcError(mixed $id, int $code, string $message): void
-    {
-        $this->writeRpc([
-            'jsonrpc' => '2.0',
-            'id' => $id,
-            'error' => ['code' => $code, 'message' => $message],
-        ]);
     }
 }
