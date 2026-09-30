@@ -20,7 +20,7 @@ OBS_SERVICES = openobserve
 FLARE_SERVICES = flaresolverr
 LOCAL_SERVICES = $(APP_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES)
 
-.PHONY: analyse build crawl-dispatch crawl-source crawl-tick down install lint migrate migrate-fresh scheduler shell test up up-control up-crawler up-ext validate worker
+.PHONY: analyse build crawl-dispatch crawl-source crawl-tick down install lint migrate migrate-fresh scheduler shell test up up-control up-crawler up-ext up-node validate worker
 
 build:
 	$(DOCKER_COMPOSE) build
@@ -65,6 +65,10 @@ up-crawler:
 # Production control instance (ONE only): app + workers + scheduler + mcp.
 up-control:
 	$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(CONTROL_SERVICES)
+
+# Production single node: app + workers + scheduler + mcp + flaresolverr (data/obs external).
+up-node:
+	$(DOCKER_COMPOSE) --profile app --profile flare --profile control up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES)
 
 down:
 	$(DOCKER_COMPOSE) $(PROFILE_ALL) down

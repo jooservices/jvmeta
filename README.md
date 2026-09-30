@@ -130,6 +130,7 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 | `make up-ext` | External mode: only `app` containers (data/obs/flare external) |
 | `make up-crawler` | Production crawler instance: `app,flare` |
 | `make up-control` | Production control instance (one only): `app,control` (scheduler + mcp) |
+| `make up-node` | Production single node: `app,flare,control` (data/obs external) |
 | `make migrate` | Run migrations |
 | `make crawl-tick` | Enqueue listings for all enabled sites |
 | `make crawl-dispatch` | Buffer → Laravel jobs on named queues |
