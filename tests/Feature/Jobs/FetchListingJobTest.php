@@ -55,6 +55,33 @@ final class FetchListingJobTest extends TestCase
         self::assertLessThan(2.0, (float) $source->refresh()->gap_seconds_current);
     }
 
+    public function test_success_enqueues_items_by_next_crawl_type_hint(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->listingRow($source);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://onejav.com/new',
+            page: 1,
+            entityType: 'movie',
+            items: [
+                (new CrawlItemResultDto(
+                    url: 'https://onejav.com/actress/',
+                    entityType: 'performer',
+                    meta: [],
+                    nextCrawlType: 'performer_listing',
+                )),
+                $this->movieItem('https://onejav.com/torrent/ymds282', 'YMDS-282'),
+            ],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/actress/', 'kind' => CrawlQueue::KIND_PERFORMER_LISTING]);
+        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/ymds282', 'kind' => CrawlQueue::KIND_DETAIL]);
+    }
+
     public function test_blocked_failure_records_blocked_event_and_fails_row(): void
     {
         $source = $this->source('onejav');

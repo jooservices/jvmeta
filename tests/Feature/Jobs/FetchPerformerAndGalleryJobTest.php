@@ -67,6 +67,47 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
     }
 
+    public function test_performer_listing_enqueues_items_by_next_crawl_type_hint(): void
+    {
+        $source = $this->source('xcity');
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => 'https://xxx.xcity.jp/idol/',
+            'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            performerListing: CrawlerxFetchResult::success(new CrawlListResultDto(
+                url: $row->url,
+                page: 1,
+                entityType: 'performer',
+                items: [
+                    new CrawlItemResultDto(
+                        url: 'https://xxx.xcity.jp/idol/?kana=%E3%81%82',
+                        entityType: 'performer',
+                        meta: [],
+                        nextCrawlType: 'performer_listing',
+                    ),
+                    new CrawlItemResultDto(
+                        url: 'https://xxx.xcity.jp/idol/detail/5517/',
+                        entityType: 'performer',
+                        meta: [],
+                        nextCrawlType: 'performer_detail',
+                    ),
+                ],
+                pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+            )),
+        );
+
+        FetchPerformerListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['url' => 'https://xxx.xcity.jp/idol/?kana=%E3%81%82', 'kind' => CrawlQueue::KIND_PERFORMER_LISTING]);
+        $this->assertDatabaseHas('crawl_queue', ['url' => 'https://xxx.xcity.jp/idol/detail/5517/', 'kind' => CrawlQueue::KIND_PERFORMER_DETAIL]);
+    }
+
     public function test_performer_detail_persists_rich_profile(): void
     {
         $source = $this->source('javdatabase');

@@ -70,7 +70,7 @@ final class FetchPerformerListingJob implements ShouldQueue
         if ($list->entityType === 'performer') {
             $enqueued = 0;
             foreach ($list->items as $item) {
-                $queue->enqueue($item->url, $row->source_slug, CrawlQueue::KIND_PERFORMER_DETAIL);
+                $queue->enqueue($item->url, $row->source_slug, CrawlQueue::kindForNextCrawlType($item->nextCrawlType, $list->entityType));
                 $enqueued++;
             }
 

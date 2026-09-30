@@ -29,6 +29,21 @@ class CrawlQueue extends Model
     /** @var list<string> */
     protected $fillable = ['source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'locked_by', 'last_error'];
 
+    /**
+     * Map a crawlerx item's nextCrawlType to a queue kind. Falls back to the
+     * entity's detail kind when the item is terminal (no next crawl type).
+     */
+    public static function kindForNextCrawlType(?string $nextCrawlType, string $entityType): string
+    {
+        return match ($nextCrawlType) {
+            'listing' => self::KIND_LISTING,
+            'detail' => self::KIND_DETAIL,
+            'performer_listing' => self::KIND_PERFORMER_LISTING,
+            'performer_detail' => self::KIND_PERFORMER_DETAIL,
+            default => $entityType === 'performer' ? self::KIND_PERFORMER_DETAIL : self::KIND_DETAIL,
+        };
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
