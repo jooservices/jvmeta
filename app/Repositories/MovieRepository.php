@@ -123,6 +123,19 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
             });
         }
 
+        $code = $filters['code'] ?? null;
+        if (is_string($code) && $code !== '') {
+            $pattern = '%' . $code . '%';
+            $query->where(static function (Builder $movies) use ($like, $pattern): void {
+                $movies->where('display_code', $like, $pattern)
+                    ->orWhere('code_normalized', $like, $pattern)
+                    ->orWhereHas('codes', static function (Builder $codes) use ($like, $pattern): void {
+                        $codes->where('code', $like, $pattern)
+                            ->orWhere('code_normalized', $like, $pattern);
+                    });
+            });
+        }
+
         $actress = $filters['actress'] ?? null;
         if (is_string($actress) && $actress !== '') {
             $pattern = '%' . $actress . '%';

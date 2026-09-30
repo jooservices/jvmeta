@@ -60,6 +60,26 @@ final class MovieSearchControllerTest extends TestCase
             ->assertJsonPath('data.0.code', 'SSIS-777');
     }
 
+    public function test_code_filter_matches_display_and_normalized_code(): void
+    {
+        $movie = Movie::factory()->create([
+            'display_code' => 'SSIS-888',
+            'code_normalized' => 'SSIS888',
+        ]);
+        Movie::factory()->create([
+            'display_code' => 'ABP-888',
+            'code_normalized' => 'ABP888',
+        ]);
+
+        $response = $this->getJson('/api/v1/movies?code=SSIS888', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.pagination.total', 1)
+            ->assertJsonPath('data.0.code', $movie->display_code);
+    }
+
     public function test_actress_search_matches_romaji_kanji_and_alias_ac41(): void
     {
         $movie = Movie::factory()->create();

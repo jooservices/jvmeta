@@ -29,7 +29,7 @@ final class MovieSearchService
     {
         $q = $filters['q'] ?? null;
 
-        if (! app()->environment('testing') && is_string($q) && trim($q) !== '') {
+        if ($this->canUseElasticsearch($filters, $sort, $cursor) && is_string($q) && trim($q) !== '') {
             $uuids = $this->elasticsearch->searchMovieUuids(trim($q), min(100, max($perPage * 5, $perPage)));
             if ($uuids !== []) {
                 $pageUuids = array_slice($uuids, 0, $perPage);
@@ -62,5 +62,20 @@ final class MovieSearchService
         }
 
         return $this->movies->search($filters, $sort, $cursor, $perPage);
+    }
+
+    /**
+     * Elasticsearch currently only supports the free-text relevance path.
+     * Filtered, sorted or cursor-paginated lookups must use the Postgres SoR.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function canUseElasticsearch(array $filters, string $sort, ?array $cursor): bool
+    {
+        if (app()->environment('testing') || $sort !== 'relevance' || $cursor !== null) {
+            return false;
+        }
+
+        return array_diff(array_keys($filters), ['q']) === [];
     }
 }

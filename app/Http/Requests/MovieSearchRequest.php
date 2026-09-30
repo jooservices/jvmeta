@@ -21,6 +21,7 @@ final class MovieSearchRequest extends FormRequest
     {
         return [
             'q' => ['sometimes', 'string', 'min:2'],
+            'code' => ['sometimes', 'string', 'min:2'],
             'genre' => ['sometimes', 'string'],
             'actress' => ['sometimes', 'string'],
             'maker' => ['sometimes', 'string'],
