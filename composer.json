@@ -13,7 +13,7 @@
     "require": {
         "php": "^8.5",
         "jooservices/client": "^4.0",
-        "jooservices/crawlerx": "*",
+        "jooservices/crawlerx": "^1.1",
         "jooservices/dto": "^3.0",
         "jooservices/exceptions": "^4.0",
         "jooservices/laravel-controller": "^4.0",
@@ -104,68 +104,6 @@
             "php-http/discovery": true
         }
     },
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/jooservices/laravel-notifications.git"
-        },
-        {
-            "name": "laravel-logging",
-            "type": "path",
-            "url": "../laravel-logging",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../client",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../crawlerx",
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../dto",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../exceptions",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../laravel-controller",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../laravel-repository",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
     "minimum-stability": "dev",
     "prefer-stable": true
 }
