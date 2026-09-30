@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 return [
     /*
+    | Master on/off switch. When false, AlertDispatcher skips every alert
+    | (no fan-out to Telegram / activity log). Default: on.
+    */
+    'enabled' => (bool) env('JVMETA_ALERTS_ENABLED', true),
+
+    /*
     | Telegram credentials prefer jooservices/laravel-notifications config /
     | NOTIFICATION_TELEGRAM_* env, with TELEGRAM_* (below) as legacy fallback.
     */
