@@ -4,23 +4,15 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Http\Resources\MovieResource;
-use App\Http\Resources\PerformerResource;
-use App\Models\Performer;
-use App\Models\Movie;
 use App\Services\Auth\ApiKeyService;
-use App\Services\Miss\ConsumerMissReporter;
-use App\Services\Movies\MovieLookupService;
-use App\Services\Search\MovieSearchService;
-use App\Support\Code\NormalizedCode;
+use App\Services\Mcp\McpToolService;
 use Illuminate\Console\Command;
-use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Throwable;
 
 /**
  * Minimal MCP stdio server (JSON-RPC 2.0) for AI integration.
- * Tools: lookup_movie, search_movies, get_performer.
+ * Tools: lookup_movies, get_movie, lookup_performers, get_performer.
  * Auth: JVMETA_MCP_API_KEY must be an active API key (same store as HTTP).
  */
 final class McpServeCommand extends Command
@@ -29,12 +21,8 @@ final class McpServeCommand extends Command
 
     protected $description = 'Serve JVMeta MCP tools over stdin/stdout (JSON-RPC).';
 
-    public function handle(
-        MovieLookupService $lookup,
-        MovieSearchService $search,
-        ApiKeyService $apiKeys,
-        ConsumerMissReporter $misses,
-    ): int {
+    public function handle(ApiKeyService $apiKeys, McpToolService $tools): int
+    {
         if (! $this->authenticate($apiKeys)) {
             $this->error('MCP auth failed: set JVMETA_MCP_API_KEY to an active jvm_… API key.');
 
@@ -80,12 +68,10 @@ final class McpServeCommand extends Command
                         'serverInfo' => ['name' => 'jvmeta', 'version' => '0.1.0'],
                     ],
                     'notifications/initialized', 'initialized' => null,
-                    'tools/list' => ['tools' => $this->toolDefinitions()],
+                    'tools/list' => ['tools' => $tools->definitions()],
                     'tools/call' => $this->callTool(
                         is_array($message['params'] ?? null) ? $message['params'] : [],
-                        $lookup,
-                        $search,
-                        $misses,
+                        $tools,
                         $apiKeys,
                     ),
                     'ping' => (object) [],
@@ -120,58 +106,12 @@ final class McpServeCommand extends Command
         return $apiKeys->findActiveByPlaintext($plain) !== null;
     }
 
-    /** @return list<array<string, mixed>> */
-    private function toolDefinitions(): array
-    {
-        return [
-            [
-                'name' => 'lookup_movie',
-                'description' => 'Lookup one normalized movie by code (Postgres SoR).',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'code' => ['type' => 'string', 'description' => 'DVD/amateur code e.g. STARS-456'],
-                    ],
-                    'required' => ['code'],
-                ],
-            ],
-            [
-                'name' => 'search_movies',
-                'description' => 'Search movies via Elasticsearch then hydrate from Postgres.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'q' => ['type' => 'string'],
-                        'per_page' => ['type' => 'integer', 'default' => 10],
-                    ],
-                    'required' => ['q'],
-                ],
-            ],
-            [
-                'name' => 'get_performer',
-                'description' => 'Get a performer by numeric id or uuid from Postgres.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'id' => ['type' => 'string', 'description' => 'Performer id or uuid'],
-                    ],
-                    'required' => ['id'],
-                ],
-            ],
-        ];
-    }
-
     /**
      * @param  array<string, mixed>  $params
      * @return array{content: list<array{type: string, text: string}>, isError?: bool}
      */
-    private function callTool(
-        array $params,
-        MovieLookupService $lookup,
-        MovieSearchService $search,
-        ConsumerMissReporter $misses,
-        ApiKeyService $apiKeys,
-    ): array {
+    private function callTool(array $params, McpToolService $tools, ApiKeyService $apiKeys): array
+    {
         if (! $this->authenticate($apiKeys)) {
             return [
                 'content' => [['type' => 'text', 'text' => json_encode(['error' => 'unauthorized'], JSON_UNESCAPED_UNICODE) ?: '{}']],
@@ -186,16 +126,9 @@ final class McpServeCommand extends Command
             app(\App\Observability\ObservabilityEmitter::class)->emitOps('mcp_tool', ['tool' => $name]);
         }
 
-        $payload = match ($name) {
-            'lookup_movie' => $this->toolLookupMovie((string) ($arguments['code'] ?? ''), $lookup, $misses),
-            'search_movies' => $this->toolSearchMovies(
-                (string) ($arguments['q'] ?? ''),
-                (int) ($arguments['per_page'] ?? 10),
-                $search,
-            ),
-            'get_performer' => $this->toolGetPerformer((string) ($arguments['id'] ?? ''), $misses),
-            default => ['error' => 'Unknown tool'],
-        };
+        $payload = is_string($name) && $name !== ''
+            ? $tools->call($name, $arguments)
+            : ['error' => 'tool name required'];
 
         return [
             'content' => [[
@@ -204,71 +137,6 @@ final class McpServeCommand extends Command
             ]],
             'isError' => isset($payload['error']),
         ];
-    }
-
-    /** @return array<string, mixed> */
-    private function toolLookupMovie(string $code, MovieLookupService $lookup, ConsumerMissReporter $misses): array
-    {
-        if ($code === '') {
-            return ['error' => 'code required'];
-        }
-
-        try {
-            NormalizedCode::from($code);
-        } catch (InvalidArgumentException $e) {
-            return ['error' => $e->getMessage()];
-        }
-
-        $movie = $lookup->findByCode($code);
-        if ($movie === null) {
-            $misses->report('movie', $code, ['endpoint' => 'mcp.lookup_movie']);
-
-            return ['error' => 'movie_not_found', 'code' => $code];
-        }
-
-        return (new MovieResource($movie))->toArray(Request::create('/'));
-    }
-
-    /** @return array<string, mixed> */
-    private function toolSearchMovies(string $q, int $perPage, MovieSearchService $search): array
-    {
-        if (trim($q) === '') {
-            return ['error' => 'q required'];
-        }
-
-        $result = $search->search(['q' => $q], 'relevance', null, max(1, min(50, $perPage)));
-
-        return [
-            'total' => $result['total'],
-            'items' => $result['items']->map(static fn(Movie $w): array => [
-                'uuid' => $w->uuid,
-                'code' => $w->display_code,
-                'title_jp' => $w->title_jp,
-                'title_en' => $w->title_en,
-                'cover_url' => $w->cover_url,
-            ])->values()->all(),
-        ];
-    }
-
-    /** @return array<string, mixed> */
-    private function toolGetPerformer(string $id, ConsumerMissReporter $misses): array
-    {
-        if ($id === '') {
-            return ['error' => 'id required'];
-        }
-
-        $query = Performer::query()->with('aliases')->withCount('movies');
-        $performer = ctype_digit($id)
-            ? $query->whereKey((int) $id)->first()
-            : $query->where('uuid', $id)->first();
-
-        if (! $performer instanceof Performer) {
-            $misses->report('performer', $id, ['endpoint' => 'mcp.get_performer']);
-
-            return ['error' => 'performer_not_found'];
-        }
-
-        return (new PerformerResource($performer))->toArray(Request::create('/'));
     }
 
     /** @param array<string, mixed> $payload */

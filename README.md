@@ -8,7 +8,7 @@ Status: POC — branch model may be bypassed
 
 - **Crawl all sites:** `make crawl-tick` → `make crawl-dispatch` (worker in compose). 21 sources in `config/jvmeta_sources.php` — **movies and performers** (and eporner gallery) by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
-- **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movie`, `search_movies`, `get_performer`.
+- **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `lookup_performers`, `get_performer`.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
 
 ## Site capability matrix
@@ -91,7 +91,7 @@ MCP (stdio for AI clients) — set `JVMETA_MCP_API_KEY` to an **active** `jvm_�
 
 ```bash
 docker compose --profile mcp run --rm mcp
-# tools: lookup_movie, search_movies, get_performer
+# tools: lookup_movies, get_movie, lookup_performers, get_performer
 ```
 
 ## Fetch / CF bypass
