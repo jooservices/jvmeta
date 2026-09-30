@@ -280,6 +280,7 @@ final class MovieLookupControllerTest extends TestCase
             'movie_id' => $movie->id,
             'kind' => MovieMedia::KIND_GALLERY,
             'url' => fake()->url(),
+            'meta' => ['thumbnail_url' => fake()->imageUrl()],
             'source_slug' => 'javdb',
         ]);
         MovieMedia::factory()->create([

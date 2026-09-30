@@ -100,7 +100,7 @@ final class MovieResource extends JsonResource
             ->all();
     }
 
-    /** @return list<array{url: string, crawled_at: string|null}> */
+    /** @return list<array{url: string, crawled_at: string|null, thumbnail_url?: string|null}> */
     private function media(Movie $movie, string $kind): array
     {
         if (! $movie->relationLoaded('media')) {
@@ -109,10 +109,21 @@ final class MovieResource extends JsonResource
 
         return $movie->media
             ->where('kind', $kind)
-            ->map(fn($media): array => [
-                'url' => $media->url,
-                'crawled_at' => $this->dateTimeString($media->getAttribute('crawled_at')),
-            ])
+            ->map(function ($media) use ($kind): array {
+                $item = [
+                    'url' => $media->url,
+                    'crawled_at' => $this->dateTimeString($media->getAttribute('crawled_at')),
+                ];
+
+                if ($kind === MovieMedia::KIND_GALLERY) {
+                    $meta = $media->getAttribute('meta');
+                    $item['thumbnail_url'] = is_array($meta) && is_string($meta['thumbnail_url'] ?? null)
+                        ? $meta['thumbnail_url']
+                        : null;
+                }
+
+                return $item;
+            })
             ->values()
             ->all();
     }
