@@ -8,6 +8,7 @@ use App\Models\Performer;
 use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
 use DateTimeInterface;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -73,7 +74,7 @@ final class ElasticsearchIndexer
         $host = rtrim((string) config('elasticsearch.host'), '/');
 
         try {
-            $response = Http::timeout(5)->post("{$host}/{$index}/_search", [
+            $response = $this->http()->post("{$host}/{$index}/_search", [
                 'size' => $size,
                 'query' => [
                     'multi_match' => [
@@ -120,7 +121,7 @@ final class ElasticsearchIndexer
         $started = hrtime(true);
 
         try {
-            $response = Http::timeout(5)->put("{$host}/{$index}/_doc/{$id}", $body);
+            $response = $this->http()->put("{$host}/{$index}/_doc/{$id}", $body);
             app(ObservabilityEmitter::class)->emitDependency(
                 'elasticsearch',
                 'index',
@@ -135,6 +136,17 @@ final class ElasticsearchIndexer
                 (int) round((hrtime(true) - $started) / 1_000_000),
             );
         }
+    }
+
+    private function http(): PendingRequest
+    {
+        $request = Http::timeout(5);
+
+        if (! (bool) config('elasticsearch.verify_ssl', false)) {
+            $request = $request->withoutVerifying();
+        }
+
+        return $request;
     }
 
     private function dateString(mixed $value): ?string

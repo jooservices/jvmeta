@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 return [
     'host' => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+    // Internal ES often uses a self-signed cert; disable verification by default.
+    'verify_ssl' => (bool) env('ELASTICSEARCH_VERIFY_SSL', false),
     'movies_index' => env('ELASTICSEARCH_MOVIES_INDEX', 'jvmeta_movies'),
     'performers_index' => env('ELASTICSEARCH_PERFORMERS_INDEX', 'jvmeta_performers'),
 ];
