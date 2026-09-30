@@ -1,8 +1,8 @@
 # jvmeta
 
-Laravel POC: crawl JAV metadata (crawlerx) → Mongo archive → Postgres SoR → Elasticsearch search → API + MCP.
+Laravel app: crawl JAV metadata (crawlerx) → Mongo archive → Postgres SoR → Elasticsearch search → API + MCP.
 
-Status: POC — branch model may be bypassed
+Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 

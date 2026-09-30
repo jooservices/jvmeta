@@ -65,7 +65,7 @@ final class McpServeCommand extends Command
                     'initialize' => [
                         'protocolVersion' => '2024-11-05',
                         'capabilities' => ['tools' => (object) []],
-                        'serverInfo' => ['name' => 'jvmeta', 'version' => '0.1.0'],
+                        'serverInfo' => ['name' => 'jvmeta', 'version' => '0.1.0-beta'],
                     ],
                     'notifications/initialized', 'initialized' => null,
                     'tools/list' => ['tools' => $tools->definitions()],
