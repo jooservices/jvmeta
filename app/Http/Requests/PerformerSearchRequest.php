@@ -20,6 +20,21 @@ final class PerformerSearchRequest extends FormRequest
     {
         return [
             'q' => ['sometimes', 'string', 'min:2'],
+            'age_min' => ['sometimes', 'integer', 'min:0', 'max:120'],
+            'age_max' => ['sometimes', 'integer', 'min:0', 'max:120'],
+            'height_min' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'height_max' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'bust_min' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'bust_max' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'waist_min' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'waist_max' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'hip_min' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'hip_max' => ['sometimes', 'integer', 'min:0', 'max:300'],
+            'cup' => ['sometimes', 'string', 'max:20'],
+            'blood_type' => ['sometimes', 'string', 'max:20'],
+            'location' => ['sometimes', 'string', 'max:255'],
+            'sort' => ['sometimes', 'in:name,updated_at,linked_title_count'],
+            'cursor' => ['sometimes', 'string'],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ];
@@ -31,6 +46,31 @@ final class PerformerSearchRequest extends FormRequest
         if (is_string($q)) {
             $this->merge(['q' => trim($q)]);
         }
+
+        $location = $this->input('location');
+        if (is_string($location)) {
+            $this->merge(['location' => trim($location)]);
+        }
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            foreach ([
+                ['age_min', 'age_max'],
+                ['height_min', 'height_max'],
+                ['bust_min', 'bust_max'],
+                ['waist_min', 'waist_max'],
+                ['hip_min', 'hip_max'],
+            ] as [$minimum, $maximum]) {
+                $min = $this->input($minimum);
+                $max = $this->input($maximum);
+
+                if (is_numeric($min) && is_numeric($max) && (int) $max < (int) $min) {
+                    $validator->errors()->add($maximum, "{$maximum} must be greater than or equal to {$minimum}.");
+                }
+            }
+        });
     }
 
     protected function failedValidation(Validator $validator): void

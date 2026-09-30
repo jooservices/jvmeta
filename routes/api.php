@@ -35,7 +35,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {
             Route::get('performers', [PerformerController::class, 'index']);
-            Route::get('performers/{id}', [PerformerController::class, 'show'])->whereNumber('id');
+            Route::get('performers/{id}', [PerformerController::class, 'show']);
 
             Route::get('movies', [MovieSearchController::class, 'index']);
             Route::get('movies/{code}', [MovieLookupController::class, 'show']);
