@@ -26,6 +26,7 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame([
             'lookup_movies',
             'get_movie',
+            'search',
             'lookup_performers',
             'get_performer',
         ], $names);
@@ -146,5 +147,21 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame($performer->uuid, $payload['uuid']);
         $this->assertSame($performer->bio_text, $payload['bio_text']);
         $this->assertSame('B', $payload['blood_type']);
+    }
+
+    public function test_search_returns_movies_by_natural_language(): void
+    {
+        $movie = Movie::factory()->create([
+            'title_en' => 'A Cheeky Little Devil Schoolgirl At A Tavern Part-time Job',
+        ]);
+        Movie::factory()->create(['title_en' => 'Unrelated documentary about fishing']);
+
+        $payload = app(McpToolService::class)->call('search', [
+            'q' => 'cheeky',
+        ]);
+
+        $this->assertSame('cheeky', $payload['query']);
+        $this->assertGreaterThanOrEqual(1, $payload['pagination']['total']);
+        $this->assertSame($movie->uuid, $payload['items'][0]['uuid']);
     }
 }

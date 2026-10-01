@@ -123,6 +123,11 @@ curl -s -H "X-Api-Key: $JVMETA_MCP_API_KEY" \
 - Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Any active API key (`X-Api-Key` header) works.
 - AI clients connect to `https://<host>/api/v1/mcp` via the CF tunnel (port 8080) — no local process needed.
 
+**Semantic search** (optional embedder, profile `embed`): movies/performers are embedded with a multilingual E5 model and stored as `dense_vector` in Elasticsearch (kNN). MCP tool `search` answers natural-language queries; keyword search still works when the embedder is off.
+
+- Run the embedder on the parent node: `make up-embed` (`EMBEDDER_URL=http://embedder:8000`); crawler nodes point `EMBEDDER_URL=http://<parent>:8000`.
+- Create/recreate ES vector mappings + backfill: `docker compose run --rm --no-deps api php artisan es:setup --reindex`.
+
 ## Fetch / CF bypass
 
 Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/stealth → FlareSolverr).

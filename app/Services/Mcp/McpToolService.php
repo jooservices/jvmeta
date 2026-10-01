@@ -76,6 +76,18 @@ final class McpToolService
                 ],
             ],
             [
+                'name' => 'search',
+                'description' => 'Semantic (natural-language) movie search. Understands meaning, not just keywords.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'q' => ['type' => 'string', 'description' => 'Natural-language description, e.g. "cheeky schoolgirl part-time at a tavern".'],
+                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                    ],
+                    'required' => ['q'],
+                ],
+            ],
+            [
                 'name' => 'lookup_performers',
                 'description' => 'Return a filtered, sorted and cursor-paginated list of performers.',
                 'inputSchema' => [
@@ -123,6 +135,7 @@ final class McpToolService
             return match ($name) {
                 'lookup_movies' => $this->lookupMovies($arguments),
                 'get_movie' => $this->getMovie($arguments),
+                'search' => $this->search($arguments),
                 'lookup_performers' => $this->lookupPerformers($arguments),
                 'get_performer' => $this->getPerformer($arguments),
                 default => ['error' => 'unknown_tool'],
@@ -186,6 +199,27 @@ final class McpToolService
         }
 
         return (new MovieResource($movie))->toArray(Request::create('/'));
+    }
+
+    /** @param array<string, mixed> $arguments */
+    /** @return array<string, mixed> */
+    private function search(array $arguments): array
+    {
+        $q = $this->requiredStringArgument($arguments, 'q');
+        $perPage = $this->perPage($arguments);
+
+        $result = $this->movieSearch->semanticSearch($q, $perPage);
+        $request = Request::create('/');
+
+        return [
+            'query' => $q,
+            'items' => $result['items']->map(fn(Movie $movie): array => (new MovieSummaryResource($movie))->toArray($request))->values()->all(),
+            'pagination' => [
+                'total' => $result['total'],
+                'per_page' => $perPage,
+                'has_more' => $result['has_more'],
+            ],
+        ];
     }
 
     /** @param array<string, mixed> $arguments */

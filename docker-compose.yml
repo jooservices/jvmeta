@@ -24,6 +24,8 @@ x-app-environment: &app-environment
   ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-http://elasticsearch:9200}
   ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-jvmeta_movies}
   ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-jvmeta_performers}
+  EMBEDDER_URL: ${EMBEDDER_URL:-http://embedder:8000}
+  EMBEDDER_DIM: ${EMBEDDER_DIM:-384}
   CRAWLERX_ROOT: /var/www/html/vendor/jooservices/crawlerx
   CRAWLERX_NODE: node
   CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs
@@ -74,6 +76,16 @@ services:
 
   worker:
     <<: *worker
+
+  embedder:
+    build:
+      context: ./embedder
+    image: jooservices/jvmeta-embedder:latest
+    ports:
+      - "${EMBEDDER_HOST_PORT:-8000}:8000"
+    restart: unless-stopped
+    profiles:
+      - embed
 
   scheduler:
     image: jooservices/jvmeta:php85

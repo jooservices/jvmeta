@@ -7,6 +7,7 @@ namespace App\Services\Search;
 use App\Models\Performer;
 use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
+use App\Services\Embedding\EmbedderClient;
 use DateTimeInterface;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -17,11 +18,13 @@ use Throwable;
  */
 final class ElasticsearchIndexer
 {
+    public function __construct(private readonly EmbedderClient $embedder) {}
+
     public function indexMovie(Movie $movie): void
     {
         $movie->loadMissing(['genres', 'performers']);
 
-        $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, [
+        $document = [
             'movie_id' => $movie->id,
             'uuid' => $movie->uuid,
             'code' => $movie->display_code,
@@ -44,25 +47,54 @@ final class ElasticsearchIndexer
             'community_score' => $movie->community_score !== null ? (float) $movie->community_score : null,
             'updated_at' => $this->dateTimeString($movie->getAttribute('updated_at')),
             'crawled_at' => $this->dateTimeString($movie->getAttribute('crawled_at')),
-        ]);
+        ];
+
+        $embedText = implode(' ', array_filter([
+            (string) $movie->title_en,
+            (string) $movie->title_jp,
+            implode(', ', $document['genres']),
+            (string) $movie->maker,
+            (string) $movie->series,
+            (string) $movie->description,
+        ]));
+        $vector = $this->embedder->embedOne($embedText);
+        if ($vector !== null) {
+            $document['title_embedding'] = $vector;
+        }
+
+        $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, $document);
     }
 
     public function indexPerformer(Performer $performer): void
     {
         $performer->loadMissing('aliases');
 
-        $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, [
+        $aliases = $performer->aliases->pluck('alias')->filter()->values()->all();
+        $document = [
             'performer_id' => $performer->id,
             'uuid' => $performer->uuid,
             'name_romaji' => $performer->name_romaji,
             'name_kanji' => $performer->name_kanji,
             'name_kana' => $performer->name_kana,
-            'aliases' => $performer->aliases->pluck('alias')->filter()->values()->all(),
+            'aliases' => $aliases,
             'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
             'cup' => $performer->cup,
             'location' => $performer->location,
             'updated_at' => $this->dateTimeString($performer->getAttribute('updated_at')),
-        ]);
+        ];
+
+        $embedText = implode(' ', array_filter([
+            (string) $performer->name_romaji,
+            (string) $performer->name_kanji,
+            (string) $performer->name_kana,
+            implode(', ', $aliases),
+        ]));
+        $vector = $this->embedder->embedOne($embedText);
+        if ($vector !== null) {
+            $document['performer_embedding'] = $vector;
+        }
+
+        $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
     }
 
     /**
@@ -102,6 +134,50 @@ final class ElasticsearchIndexer
             $hits = $response->json('hits.hits') ?? [];
             $uuids = [];
             foreach ($hits as $hit) {
+                $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
+                if (is_string($uuid) && $uuid !== '') {
+                    $uuids[] = $uuid;
+                }
+            }
+
+            return $uuids;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Semantic (kNN) search over movie title/description embeddings.
+     *
+     * @return list<string> uuids
+     */
+    public function semanticMovieUuids(string $query, int $size = 20): array
+    {
+        $vector = $this->embedder->embedOne($query, true);
+        if ($vector === null) {
+            return [];
+        }
+
+        $index = (string) config('elasticsearch.movies_index');
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+
+        try {
+            $response = $this->http()->post("{$host}/{$index}/_search", [
+                'size' => $size,
+                'knn' => [
+                    'field' => 'title_embedding',
+                    'query_vector' => $vector,
+                    'k' => $size,
+                    'num_candidates' => max($size * 10, 100),
+                ],
+            ]);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $uuids = [];
+            foreach ($response->json('hits.hits') ?? [] as $hit) {
                 $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
                 if (is_string($uuid) && $uuid !== '') {
                     $uuids[] = $uuid;

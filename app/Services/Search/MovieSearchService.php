@@ -65,6 +65,51 @@ final class MovieSearchService
     }
 
     /**
+     * Natural-language semantic search: embed the query, kNN over ES vectors,
+     * hydrate uuids from Postgres. Falls back to keyword search when the
+     * embedder or ES vectors are unavailable.
+     *
+     * @return array{items: Collection<int, Movie>, total: int, has_more: bool, last_id: int|null, last_sort: mixed, sort: string}
+     */
+    public function semanticSearch(string $query, int $perPage): array
+    {
+        if (app()->environment('testing')) {
+            return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
+        }
+
+        $uuids = $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
+        if ($uuids !== []) {
+            $pageUuids = array_slice($uuids, 0, $perPage);
+            $byUuid = Movie::query()
+                ->whereIn('uuid', $pageUuids)
+                ->with(['genres', 'performers.aliases', 'media', 'codes'])
+                ->get()
+                ->keyBy('uuid');
+
+            $ordered = collect($pageUuids)
+                ->map(static fn(string $uuid): ?Movie => $byUuid->get($uuid))
+                ->filter(static fn($movie): bool => $movie instanceof Movie)
+                ->values();
+
+            if ($ordered->isNotEmpty()) {
+                /** @var Movie $last */
+                $last = $ordered->last();
+
+                return [
+                    'items' => $ordered,
+                    'total' => count($uuids),
+                    'has_more' => count($uuids) > $perPage,
+                    'last_id' => $last->id,
+                    'last_sort' => null,
+                    'sort' => 'relevance',
+                ];
+            }
+        }
+
+        return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
+    }
+
+    /**
      * Elasticsearch currently only supports the free-text relevance path.
      * Filtered, sorted or cursor-paginated lookups must use the Postgres SoR.
      *

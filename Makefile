@@ -2,9 +2,11 @@ DOCKER_COMPOSE ?= docker compose
 PHP_SERVICE ?= api
 
 # Profile flag groups (repeat --profile per value: comma form is not parsed).
-PROFILE_ALL = --profile app --profile data --profile openobserve --profile flare --profile control
+PROFILE_ALL = --profile app --profile data --profile openobserve --profile flare --profile control --profile embed
 PROFILE_CRAWLER = --profile app --profile flare
-PROFILE_CONTROL = --profile app --profile control
+PROFILE_CONTROL = --profile app --profile control --profile embed
+PROFILE_NODE = --profile app --profile flare --profile control --profile embed
+PROFILE_EMBED = --profile embed
 
 # Worker instances come from .env (JVMETA_WORKER_INSTANCES); override on the
 # command line wins: `make up JVMETA_WORKER_INSTANCES=4`.
@@ -18,9 +20,10 @@ CONTROL_SERVICES = scheduler mcp
 DATA_SERVICES = postgres mongo elasticsearch
 OBS_SERVICES = openobserve
 FLARE_SERVICES = flaresolverr
-LOCAL_SERVICES = $(APP_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES)
+EMBED_SERVICES = embedder
+LOCAL_SERVICES = $(APP_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
 
-.PHONY: analyse build crawl-dispatch crawl-source crawl-tick down install lint migrate migrate-fresh scheduler shell test up up-control up-crawler up-ext up-node validate worker
+.PHONY: analyse build crawl-dispatch crawl-source crawl-tick down install lint migrate migrate-fresh scheduler shell test up up-control up-crawler up-embed up-ext up-node validate worker
 
 build:
 	$(DOCKER_COMPOSE) build
@@ -64,11 +67,15 @@ up-crawler:
 
 # Production control instance (ONE only): app + workers + scheduler + mcp.
 up-control:
-	$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(CONTROL_SERVICES)
+	$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
 
-# Production single node: app + workers + scheduler + mcp + flaresolverr (data/obs external).
+# Production single node: app + workers + scheduler + mcp + flaresolverr + embedder (data/obs external).
 up-node:
-	$(DOCKER_COMPOSE) --profile app --profile flare --profile control up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES)
+	$(DOCKER_COMPOSE) $(PROFILE_NODE) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
+
+# Embedder only (semantic search): run on the parent node; crawler nodes just point EMBEDDER_URL at it.
+up-embed:
+	$(DOCKER_COMPOSE) $(PROFILE_EMBED) up -d $(EMBED_SERVICES)
 
 down:
 	$(DOCKER_COMPOSE) $(PROFILE_ALL) down
