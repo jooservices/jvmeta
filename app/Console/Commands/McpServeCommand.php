@@ -41,7 +41,6 @@ final class McpServeCommand extends Command
             }
 
             try {
-                /** @var array<string, mixed> $message */
                 $message = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
             } catch (Throwable) {
                 $this->writeRpc($handler->error(null, -32700, 'Parse error'));
@@ -55,6 +54,7 @@ final class McpServeCommand extends Command
                 continue;
             }
 
+            /** @var array<string, mixed> $message */
             $response = $handler->handle($message);
             if ($response !== null) {
                 $this->writeRpc($response);
