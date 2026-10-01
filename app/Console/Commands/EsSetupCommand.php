@@ -26,8 +26,8 @@ final class EsSetupCommand extends Command
         $dim = (int) config('elasticsearch.embed_dim', 384);
         $vectorProp = ['type' => 'dense_vector', 'dims' => $dim, 'index' => true, 'similarity' => 'cosine'];
 
-        $this->ensureIndex((string) config('elasticsearch.movies_index'), 'title_embedding', $vectorProp);
-        $this->ensureIndex((string) config('elasticsearch.performers_index'), 'performer_embedding', $vectorProp);
+        $this->ensureIndex((string) config('elasticsearch.movies_index'), 'embedding_movie', $vectorProp);
+        $this->ensureIndex((string) config('elasticsearch.performers_index'), 'embedding_performer', $vectorProp);
 
         if ($this->option('reindex')) {
             $this->reindex();

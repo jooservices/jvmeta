@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Mcp;
 
+use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -55,6 +56,29 @@ final class McpHttpEndpointTest extends TestCase
         ], ['X-Api-Key' => $key])
             ->assertOk()
             ->assertJsonPath('result.content.0.type', 'text');
+    }
+
+    public function test_tools_call_search_supports_performer_entity_over_http(): void
+    {
+        $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        config(['jvmeta_auth.mcp_api_key' => $key]);
+        $term = fake()->unique()->words(2, true);
+        $performer = Performer::factory()->create(['bio_text' => "Profile {$term}"]);
+
+        $response = $this->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'search',
+                'arguments' => ['q' => $term, 'entity' => 'performer'],
+            ],
+        ], ['X-Api-Key' => $key]);
+
+        $response->assertOk()->assertJsonPath('result.content.0.type', 'text');
+        $payload = json_decode((string) $response->json('result.content.0.text'), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame($performer->uuid, $payload['items'][0]['uuid']);
     }
 
     public function test_tools_call_rejects_unknown_tool(): void
