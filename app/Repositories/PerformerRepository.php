@@ -44,6 +44,19 @@ final class PerformerRepository extends EloquentRepository implements Repository
     }
 
     /**
+     * Accurate total for a filter set without hydrating items.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function countFiltered(array $filters): int
+    {
+        $query = $this->newQuery();
+        $this->applyFilters($query, $filters);
+
+        return $query->count();
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      * @param  array{sort: string, last_sort: int|float|string|null, last_id: int}|null  $cursor
      * @return array{items: Collection<int, Performer>, total: int, sort: string, last_sort: int|float|string|null, last_id: int|null, has_more: bool}

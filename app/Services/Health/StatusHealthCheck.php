@@ -20,6 +20,7 @@ final class StatusHealthCheck
      *   checked_at: string,
      *   database: string,
      *   worker: array{last_heartbeat_at: string|null, stale: bool},
+     *   instances: list<array{instance: string, last_heartbeat_at: string|null, stale: bool}>,
      *   queue: array{pending: int, claimed: int, failed: int},
      *   sources: list<array{slug: string, circuit_state: string, last_success_at: string|null, last_error_at: string|null, consecutive_failures: int}>
      * }
@@ -84,6 +85,7 @@ final class StatusHealthCheck
                 'last_heartbeat_at' => $lastHeartbeat?->toIso8601String(),
                 'stale' => $workerStale,
             ],
+            'instances' => $this->heartbeat->instances($staleSeconds),
             'queue' => $queue,
             'sources' => $sourceRows,
         ];

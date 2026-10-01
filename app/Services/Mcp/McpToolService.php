@@ -12,6 +12,8 @@ use App\Http\Resources\PerformerSummaryResource;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Repositories\PerformerRepository;
+use App\Services\Crawl\CrawlStatusService;
+use App\Services\Health\SystemStatusService;
 use App\Services\Miss\ConsumerMissReporter;
 use App\Services\Movies\MovieLookupService;
 use App\Services\Search\CursorCodec;
@@ -28,6 +30,8 @@ final class McpToolService
         private readonly PerformerRepository $performers,
         private readonly CursorCodec $cursorCodec,
         private readonly ConsumerMissReporter $misses,
+        private readonly CrawlStatusService $crawlStatusService,
+        private readonly SystemStatusService $systemStatusService,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -61,6 +65,7 @@ final class McpToolService
                         'sort' => ['type' => 'string', 'enum' => CursorCodec::SORTS, 'default' => 'relevance'],
                         'cursor' => ['type' => 'string'],
                         'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                        'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
                     ],
                 ],
             ],
@@ -110,7 +115,32 @@ final class McpToolService
                         'sort' => ['type' => 'string', 'enum' => PerformerRepository::SORTS, 'default' => 'name'],
                         'cursor' => ['type' => 'string'],
                         'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                        'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
                     ],
+                ],
+            ],
+            [
+                'name' => 'get_counts',
+                'description' => 'Return the total number of movies and performers in the catalog.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+            ],
+            [
+                'name' => 'crawl_status',
+                'description' => 'Return crawl pipeline status: catalog counts, queue depth, per-source health and per-instance worker liveness.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+            ],
+            [
+                'name' => 'system_status',
+                'description' => 'Return health of the backing services: database, Elasticsearch, embedder, activity log and observability.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [],
                 ],
             ],
             [
@@ -138,6 +168,9 @@ final class McpToolService
                 'search' => $this->search($arguments),
                 'lookup_performers' => $this->lookupPerformers($arguments),
                 'get_performer' => $this->getPerformer($arguments),
+                'get_counts' => $this->getCounts($arguments),
+                'crawl_status' => $this->crawlStatus(),
+                'system_status' => $this->systemStatus(),
                 default => ['error' => 'unknown_tool'],
             };
         } catch (InvalidFilterException $exception) {
@@ -152,6 +185,11 @@ final class McpToolService
         $filters = $this->movieFilters($arguments);
         $sort = $this->stringArgument($arguments, 'sort') ?? 'relevance';
         $this->assertAllowedSort($sort, CursorCodec::SORTS);
+
+        if ($this->booleanArgument($arguments, 'count_only')) {
+            return ['count' => $this->movieSearch->count($filters)];
+        }
+
         $perPage = $this->perPage($arguments);
         $cursorValue = $this->stringArgument($arguments, 'cursor');
         $cursor = $cursorValue !== null ? $this->cursorCodec->decode($cursorValue, CursorCodec::SORTS) : null;
@@ -229,6 +267,11 @@ final class McpToolService
         $filters = $this->performerFilters($arguments);
         $sort = $this->stringArgument($arguments, 'sort') ?? 'name';
         $this->assertAllowedSort($sort, PerformerRepository::SORTS);
+
+        if ($this->booleanArgument($arguments, 'count_only')) {
+            return ['count' => $this->performers->countFiltered($filters)];
+        }
+
         $perPage = $this->perPage($arguments);
         $cursorValue = $this->stringArgument($arguments, 'cursor');
         $cursor = $cursorValue !== null
@@ -272,6 +315,45 @@ final class McpToolService
         }
 
         return (new PerformerResource($performer))->toArray(Request::create('/'));
+    }
+
+    /** @return array<string, mixed> */
+    private function getCounts(array $arguments): array
+    {
+        unset($arguments);
+
+        return [
+            'movies' => (int) Movie::query()->count(),
+            'performers' => (int) Performer::query()->count(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function crawlStatus(): array
+    {
+        return $this->crawlStatusService->status();
+    }
+
+    /** @return array<string, mixed> */
+    private function systemStatus(): array
+    {
+        return $this->systemStatusService->status();
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function booleanArgument(array $arguments, string $key): bool
+    {
+        $value = $arguments[$key] ?? false;
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if ($value === 1 || $value === '1' || $value === 'true') {
+            return true;
+        }
+
+        return false;
     }
 
     /** @param array<string, mixed> $arguments */

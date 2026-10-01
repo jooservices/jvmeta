@@ -38,7 +38,7 @@ final class McpHttpEndpointTest extends TestCase
             'params' => (object) [],
         ], ['X-Api-Key' => $key])
             ->assertOk()
-            ->assertJsonCount(5, 'result.tools')
+            ->assertJsonCount(8, 'result.tools')
             ->assertJsonPath('result.tools.0.name', 'lookup_movies');
     }
 

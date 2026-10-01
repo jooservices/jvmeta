@@ -54,6 +54,7 @@ final class McpServeCommand extends Command
                 continue;
             }
 
+            /** @var array<string, mixed> $message */
             $response = $handler->handle($message);
             if ($response !== null) {
                 $this->writeRpc($response);

@@ -42,6 +42,8 @@ final class HealthControllerTest extends TestCase
             ->assertJsonPath('sources.0.slug', 'javdb')
             ->assertJsonPath('worker.stale', false);
 
+        $this->assertIsArray($response->json('instances'));
+
         $this->assertArrayNotHasKey('movies', $response->json());
         $this->assertArrayNotHasKey('titles', $response->json());
     }
