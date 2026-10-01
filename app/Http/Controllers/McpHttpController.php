@@ -23,7 +23,6 @@ final class McpHttpController
         }
 
         try {
-            /** @var array<string, mixed> $message */
             $message = json_decode((string) $request->getContent(), true, 512, JSON_THROW_ON_ERROR);
         } catch (Throwable) {
             return response()->json($handler->error(null, -32700, 'Parse error'), Response::HTTP_BAD_REQUEST);
@@ -44,7 +43,7 @@ final class McpHttpController
 
     private function stream(McpRequestHandler $handler): Response
     {
-        return response()->stream(function () use ($handler): void {
+        return response()->stream(function (): void {
             echo 'event: endpoint' . "\n";
             echo 'data: ' . json_encode(['uri' => '/api/v1/mcp']) . "\n\n";
             ob_flush();

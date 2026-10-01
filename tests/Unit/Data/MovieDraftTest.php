@@ -61,5 +61,4 @@ final class MovieDraftTest extends TestCase
 
         new MovieDraft('javdb', 'https://example.test/v/1', 'SSIS-001', runtimeMinutes: 0);
     }
-
 }
