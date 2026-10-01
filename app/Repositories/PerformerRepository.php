@@ -248,4 +248,20 @@ final class PerformerRepository extends EloquentRepository implements Repository
 
         return $performer instanceof Performer ? $performer : null;
     }
+
+    /**
+     * @param  list<string>  $uuids
+     * @return Collection<int, Performer>
+     */
+    public function findByUuidsForDisplay(array $uuids): Collection
+    {
+        /** @var Collection<int, Performer> $performers */
+        $performers = $this->newQuery()
+            ->whereIn('uuid', $uuids)
+            ->with('aliases')
+            ->withCount('movies')
+            ->get();
+
+        return $performers;
+    }
 }

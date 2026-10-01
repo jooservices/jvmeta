@@ -18,6 +18,7 @@ use App\Services\Miss\ConsumerMissReporter;
 use App\Services\Movies\MovieLookupService;
 use App\Services\Search\CursorCodec;
 use App\Services\Search\MovieSearchService;
+use App\Services\Search\PerformerSearchService;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -27,6 +28,7 @@ final class McpToolService
     public function __construct(
         private readonly MovieLookupService $movieLookup,
         private readonly MovieSearchService $movieSearch,
+        private readonly PerformerSearchService $performerSearch,
         private readonly PerformerRepository $performers,
         private readonly CursorCodec $cursorCodec,
         private readonly ConsumerMissReporter $misses,
@@ -38,121 +40,161 @@ final class McpToolService
     public function definitions(): array
     {
         return [
-            [
-                'name' => 'lookup_movies',
-                'description' => 'Return a filtered, sorted and cursor-paginated list of movies.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'q' => ['type' => 'string', 'description' => 'Keyword across code, title and performer names.'],
-                        'code' => ['type' => 'string', 'description' => 'Movie code or partial code.'],
-                        'genre' => ['type' => 'string'],
-                        'actress' => ['type' => 'string'],
-                        'maker' => ['type' => 'string'],
-                        'series' => ['type' => 'string'],
-                        'label' => ['type' => 'string'],
-                        'released_from' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
-                        'released_to' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
-                        'runtime_min' => ['type' => 'integer'],
-                        'runtime_max' => ['type' => 'integer'],
-                        'censored' => [
-                            'oneOf' => [
-                                ['type' => 'boolean'],
-                                ['type' => 'integer', 'enum' => [0, 1]],
-                                ['type' => 'string', 'enum' => ['0', '1', 'censored', 'uncensored']],
-                            ],
+            $this->lookupMoviesDefinition(),
+            $this->getMovieDefinition(),
+            $this->searchDefinition(),
+            $this->lookupPerformersDefinition(),
+            $this->getCountsDefinition(),
+            $this->crawlStatusDefinition(),
+            $this->systemStatusDefinition(),
+            $this->getPerformerDefinition(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function lookupMoviesDefinition(): array
+    {
+        return [
+            'name' => 'lookup_movies',
+            'description' => 'Return a filtered, sorted and cursor-paginated list of movies.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'q' => ['type' => 'string', 'description' => 'Keyword across code, title and performer names.'],
+                    'code' => ['type' => 'string', 'description' => 'Movie code or partial code.'],
+                    'genre' => ['type' => 'string'],
+                    'actress' => ['type' => 'string'],
+                    'maker' => ['type' => 'string'],
+                    'series' => ['type' => 'string'],
+                    'label' => ['type' => 'string'],
+                    'released_from' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                    'released_to' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                    'runtime_min' => ['type' => 'integer'],
+                    'runtime_max' => ['type' => 'integer'],
+                    'censored' => [
+                        'oneOf' => [
+                            ['type' => 'boolean'],
+                            ['type' => 'integer', 'enum' => [0, 1]],
+                            ['type' => 'string', 'enum' => ['0', '1', 'censored', 'uncensored']],
                         ],
-                        'sort' => ['type' => 'string', 'enum' => CursorCodec::SORTS, 'default' => 'relevance'],
-                        'cursor' => ['type' => 'string'],
-                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
-                        'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
                     ],
+                    'sort' => ['type' => 'string', 'enum' => CursorCodec::SORTS, 'default' => 'relevance'],
+                    'cursor' => ['type' => 'string'],
+                    'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                    'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
                 ],
             ],
-            [
-                'name' => 'get_movie',
-                'description' => 'Return one complete movie by normalized code, including media URL references.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'code' => ['type' => 'string', 'description' => 'DVD/amateur code, for example STARS-456.'],
-                    ],
-                    'required' => ['code'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function getMovieDefinition(): array
+    {
+        return [
+            'name' => 'get_movie',
+            'description' => 'Return one complete movie by normalized code, including media URL references.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'code' => ['type' => 'string', 'description' => 'DVD/amateur code, for example STARS-456.'],
+                ],
+                'required' => ['code'],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function searchDefinition(): array
+    {
+        return [
+            'name' => 'search',
+            'description' => 'Semantic natural-language search across movies and performers.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'q' => ['type' => 'string', 'description' => 'Natural-language description of a movie or performer.'],
+                    'entity' => ['type' => 'string', 'enum' => ['movie', 'performer', 'all'], 'default' => 'movie', 'description' => 'Search movies, performers, or both.'],
+                    'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                ],
+                'required' => ['q'],
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function lookupPerformersDefinition(): array
+    {
+        return [
+            'name' => 'lookup_performers',
+            'description' => 'Return a filtered, sorted and cursor-paginated list of performers.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'q' => ['type' => 'string', 'description' => 'Name, alias or bio text.'],
+                    'age_min' => ['type' => 'integer'],
+                    'age_max' => ['type' => 'integer'],
+                    'height_min' => ['type' => 'integer'],
+                    'height_max' => ['type' => 'integer'],
+                    'bust_min' => ['type' => 'integer'],
+                    'bust_max' => ['type' => 'integer'],
+                    'waist_min' => ['type' => 'integer'],
+                    'waist_max' => ['type' => 'integer'],
+                    'hip_min' => ['type' => 'integer'],
+                    'hip_max' => ['type' => 'integer'],
+                    'cup' => ['type' => 'string'],
+                    'blood_type' => ['type' => 'string'],
+                    'location' => ['type' => 'string'],
+                    'sort' => ['type' => 'string', 'enum' => PerformerRepository::SORTS, 'default' => 'name'],
+                    'cursor' => ['type' => 'string'],
+                    'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
+                    'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
                 ],
             ],
-            [
-                'name' => 'search',
-                'description' => 'Semantic (natural-language) movie search. Understands meaning, not just keywords.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'q' => ['type' => 'string', 'description' => 'Natural-language description, e.g. "cheeky schoolgirl part-time at a tavern".'],
-                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
-                    ],
-                    'required' => ['q'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function getCountsDefinition(): array
+    {
+        return [
+            'name' => 'get_counts',
+            'description' => 'Return the total number of movies and performers in the catalog.',
+            'inputSchema' => ['type' => 'object', 'properties' => []],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function crawlStatusDefinition(): array
+    {
+        return [
+            'name' => 'crawl_status',
+            'description' => 'Return crawl pipeline status: catalog counts, queue depth, per-source health and per-instance worker liveness.',
+            'inputSchema' => ['type' => 'object', 'properties' => []],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function systemStatusDefinition(): array
+    {
+        return [
+            'name' => 'system_status',
+            'description' => 'Return health of the backing services: database, Elasticsearch, embedder, activity log and observability.',
+            'inputSchema' => ['type' => 'object', 'properties' => []],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function getPerformerDefinition(): array
+    {
+        return [
+            'name' => 'get_performer',
+            'description' => 'Return one complete performer profile by numeric id or UUID.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Performer numeric id or UUID.'],
                 ],
-            ],
-            [
-                'name' => 'lookup_performers',
-                'description' => 'Return a filtered, sorted and cursor-paginated list of performers.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'q' => ['type' => 'string', 'description' => 'Name, alias or bio text.'],
-                        'age_min' => ['type' => 'integer'],
-                        'age_max' => ['type' => 'integer'],
-                        'height_min' => ['type' => 'integer'],
-                        'height_max' => ['type' => 'integer'],
-                        'bust_min' => ['type' => 'integer'],
-                        'bust_max' => ['type' => 'integer'],
-                        'waist_min' => ['type' => 'integer'],
-                        'waist_max' => ['type' => 'integer'],
-                        'hip_min' => ['type' => 'integer'],
-                        'hip_max' => ['type' => 'integer'],
-                        'cup' => ['type' => 'string'],
-                        'blood_type' => ['type' => 'string'],
-                        'location' => ['type' => 'string'],
-                        'sort' => ['type' => 'string', 'enum' => PerformerRepository::SORTS, 'default' => 'name'],
-                        'cursor' => ['type' => 'string'],
-                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 10],
-                        'count_only' => ['type' => 'boolean', 'description' => 'Return only the total count instead of the item list.'],
-                    ],
-                ],
-            ],
-            [
-                'name' => 'get_counts',
-                'description' => 'Return the total number of movies and performers in the catalog.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [],
-                ],
-            ],
-            [
-                'name' => 'crawl_status',
-                'description' => 'Return crawl pipeline status: catalog counts, queue depth, per-source health and per-instance worker liveness.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [],
-                ],
-            ],
-            [
-                'name' => 'system_status',
-                'description' => 'Return health of the backing services: database, Elasticsearch, embedder, activity log and observability.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [],
-                ],
-            ],
-            [
-                'name' => 'get_performer',
-                'description' => 'Return one complete performer profile by numeric id or UUID.',
-                'inputSchema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'id' => ['type' => 'string', 'description' => 'Performer numeric id or UUID.'],
-                    ],
-                    'required' => ['id'],
-                ],
+                'required' => ['id'],
             ],
         ];
     }
@@ -245,12 +287,30 @@ final class McpToolService
     {
         $q = $this->requiredStringArgument($arguments, 'q');
         $perPage = $this->perPage($arguments);
+        $entity = $this->searchEntity($arguments);
 
-        $result = $this->movieSearch->semanticSearch($q, $perPage);
-        $request = Request::create('/');
+        if ($entity === 'movie') {
+            return ['query' => $q] + $this->movieSemanticPayload($q, $perPage);
+        }
+
+        if ($entity === 'performer') {
+            return ['query' => $q] + $this->performerSemanticPayload($q, $perPage);
+        }
 
         return [
             'query' => $q,
+            'movies' => $this->movieSemanticPayload($q, $perPage),
+            'performers' => $this->performerSemanticPayload($q, $perPage),
+        ];
+    }
+
+    /** @return array{items: list<array<string, mixed>>, pagination: array<string, mixed>} */
+    private function movieSemanticPayload(string $query, int $perPage): array
+    {
+        $result = $this->movieSearch->semanticSearch($query, $perPage);
+        $request = Request::create('/');
+
+        return [
             'items' => $result['items']->map(fn(Movie $movie): array => (new MovieSummaryResource($movie))->toArray($request))->values()->all(),
             'pagination' => [
                 'total' => $result['total'],
@@ -258,6 +318,33 @@ final class McpToolService
                 'has_more' => $result['has_more'],
             ],
         ];
+    }
+
+    /** @return array{items: list<array<string, mixed>>, pagination: array<string, mixed>} */
+    private function performerSemanticPayload(string $query, int $perPage): array
+    {
+        $result = $this->performerSearch->semanticSearch($query, $perPage);
+        $request = Request::create('/');
+
+        return [
+            'items' => $result['items']->map(fn(Performer $performer): array => (new PerformerSummaryResource($performer))->toArray($request))->values()->all(),
+            'pagination' => [
+                'total' => $result['total'],
+                'per_page' => $perPage,
+                'has_more' => $result['has_more'],
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function searchEntity(array $arguments): string
+    {
+        $entity = $arguments['entity'] ?? 'movie';
+        if (! is_string($entity) || ! in_array($entity, ['movie', 'performer', 'all'], true)) {
+            throw new InvalidFilterException('entity must be movie, performer or all.');
+        }
+
+        return $entity;
     }
 
     /** @param array<string, mixed> $arguments */

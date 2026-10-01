@@ -25,7 +25,8 @@ final class McpToolServiceTest extends TestCase
 
     public function test_definitions_expose_collection_and_detail_tools(): void
     {
-        $names = collect(app(McpToolService::class)->definitions())->pluck('name')->all();
+        $definitions = app(McpToolService::class)->definitions();
+        $names = collect($definitions)->pluck('name')->all();
 
         $this->assertSame([
             'lookup_movies',
@@ -37,6 +38,9 @@ final class McpToolServiceTest extends TestCase
             'system_status',
             'get_performer',
         ], $names);
+
+        $search = collect($definitions)->firstWhere('name', 'search');
+        $this->assertSame(['movie', 'performer', 'all'], $search['inputSchema']['properties']['entity']['enum']);
 
         $movies = collect(app(McpToolService::class)->definitions())->firstWhere('name', 'lookup_movies');
         $this->assertArrayHasKey('count_only', $movies['inputSchema']['properties']);
@@ -173,6 +177,46 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame('cheeky', $payload['query']);
         $this->assertGreaterThanOrEqual(1, $payload['pagination']['total']);
         $this->assertSame($movie->uuid, $payload['items'][0]['uuid']);
+    }
+
+    public function test_search_returns_performers_by_natural_language(): void
+    {
+        $term = fake()->unique()->words(2, true);
+        $performer = Performer::factory()->create(['bio_text' => "Profile {$term}"]);
+
+        $payload = app(McpToolService::class)->call('search', [
+            'q' => $term,
+            'entity' => 'performer',
+        ]);
+
+        $this->assertSame($term, $payload['query']);
+        $this->assertSame($performer->uuid, $payload['items'][0]['uuid']);
+        $this->assertSame(1, $payload['pagination']['total']);
+    }
+
+    public function test_search_all_returns_movies_and_performers_separately(): void
+    {
+        $term = fake()->unique()->words(2, true);
+        $movie = Movie::factory()->create(['title_en' => "Movie {$term}"]);
+        $performer = Performer::factory()->create(['bio_text' => "Profile {$term}"]);
+
+        $payload = app(McpToolService::class)->call('search', [
+            'q' => $term,
+            'entity' => 'all',
+        ]);
+
+        $this->assertSame($movie->uuid, $payload['movies']['items'][0]['uuid']);
+        $this->assertSame($performer->uuid, $payload['performers']['items'][0]['uuid']);
+    }
+
+    public function test_search_rejects_unknown_entity(): void
+    {
+        $payload = app(McpToolService::class)->call('search', [
+            'q' => fake()->sentence(),
+            'entity' => 'unknown',
+        ]);
+
+        $this->assertSame('invalid_filter', $payload['error']);
     }
 
     public function test_lookup_movies_count_only_returns_count_without_items(): void

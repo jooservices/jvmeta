@@ -59,7 +59,7 @@ final class ElasticsearchIndexer
         ]));
         $vector = $this->embedder->embedOne($embedText);
         if ($vector !== null) {
-            $document['title_embedding'] = $vector;
+            $document['embedding_movie'] = $vector;
         }
 
         $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, $document);
@@ -78,7 +78,9 @@ final class ElasticsearchIndexer
             'name_kana' => $performer->name_kana,
             'aliases' => $aliases,
             'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
+            'bio_text' => $performer->bio_text,
             'cup' => $performer->cup,
+            'debut_date' => $this->dateString($performer->getAttribute('debut_date')),
             'location' => $performer->location,
             'updated_at' => $this->dateTimeString($performer->getAttribute('updated_at')),
         ];
@@ -88,10 +90,16 @@ final class ElasticsearchIndexer
             (string) $performer->name_kanji,
             (string) $performer->name_kana,
             implode(', ', $aliases),
+            (string) $performer->bio_text,
+            $this->dateString($performer->getAttribute('birth_date')),
+            $this->dateString($performer->getAttribute('debut_date')),
+            (string) $performer->location,
+            (string) $performer->cup,
+            (string) $performer->blood_type,
         ]));
         $vector = $this->embedder->embedOne($embedText);
         if ($vector !== null) {
-            $document['performer_embedding'] = $vector;
+            $document['embedding_performer'] = $vector;
         }
 
         $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
@@ -153,19 +161,44 @@ final class ElasticsearchIndexer
      */
     public function semanticMovieUuids(string $query, int $size = 20): array
     {
+        return $this->semanticUuids(
+            (string) config('elasticsearch.movies_index'),
+            'embedding_movie',
+            $query,
+            $size,
+        );
+    }
+
+    /**
+     * @return list<string> uuids
+     */
+    public function semanticPerformerUuids(string $query, int $size = 20): array
+    {
+        return $this->semanticUuids(
+            (string) config('elasticsearch.performers_index'),
+            'embedding_performer',
+            $query,
+            $size,
+        );
+    }
+
+    /**
+     * @return list<string> uuids
+     */
+    private function semanticUuids(string $index, string $embeddingField, string $query, int $size): array
+    {
         $vector = $this->embedder->embedOne($query, true);
         if ($vector === null) {
             return [];
         }
 
-        $index = (string) config('elasticsearch.movies_index');
         $host = rtrim((string) config('elasticsearch.host'), '/');
 
         try {
             $response = $this->http()->post("{$host}/{$index}/_search", [
                 'size' => $size,
                 'knn' => [
-                    'field' => 'title_embedding',
+                    'field' => $embeddingField,
                     'query_vector' => $vector,
                     'k' => $size,
                     'num_candidates' => max($size * 10, 100),

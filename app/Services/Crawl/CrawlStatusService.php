@@ -27,8 +27,31 @@ final class CrawlStatusService
         $staleSeconds = (int) config('jvmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900);
         $now = now();
         $claimCutoff = now()->subSeconds($staleSeconds);
-        $dayCutoff = now()->subDay();
 
+        return [
+            'checked_at' => $now->toIso8601String(),
+            'counts' => [
+                'movies' => (int) Movie::query()->count(),
+                'performers' => (int) Performer::query()->count(),
+            ],
+            'ingest' => [
+                'movies_1h' => $this->newSince(Movie::class, 'first_seen_at', 3600),
+                'movies_24h' => $this->newSince(Movie::class, 'first_seen_at', 86400),
+                'performers_1h' => $this->newSince(Performer::class, 'first_seen_at', 3600),
+                'performers_24h' => $this->newSince(Performer::class, 'first_seen_at', 86400),
+            ],
+            'queue' => $this->queueStatus($claimCutoff),
+            'sources' => $this->sourceStatus(),
+            'workers' => $this->workerStatus($claimCutoff),
+            'runs_24h' => $this->runsStatus(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function queueStatus(DateTimeInterface $claimCutoff): array
+    {
         $queueByStatus = CrawlQueue::query()
             ->select('status', DB::raw('count(*) as total'))
             ->groupBy('status')
@@ -54,19 +77,27 @@ final class CrawlStatusService
             ->orderBy('next_attempt_at')
             ->value('next_attempt_at');
 
-        $stuckClaimed = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_CLAIMED)
-            ->where('claimed_at', '<', $claimCutoff)
-            ->count();
+        return [
+            'by_status' => $queueByStatus,
+            'by_kind_status' => $pendingKinds,
+            'oldest_pending_at' => $oldestPending instanceof DateTimeInterface
+                ? $oldestPending->format(DATE_ATOM)
+                : null,
+            'stuck_claimed' => CrawlQueue::query()
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->where('claimed_at', '<', $claimCutoff)
+                ->count(),
+        ];
+    }
 
-        $sources = Source::query()
-            ->orderBy('priority')
-            ->orderBy('slug')
-            ->get();
-
-        $sourceRows = [];
-        foreach ($sources as $source) {
-            $sourceRows[] = [
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function sourceStatus(): array
+    {
+        $rows = [];
+        foreach (Source::query()->orderBy('priority')->orderBy('slug')->get() as $source) {
+            $rows[] = [
                 'slug' => $source->slug,
                 'name' => $source->name,
                 'enabled' => (bool) $source->enabled,
@@ -81,6 +112,14 @@ final class CrawlStatusService
             ];
         }
 
+        return $rows;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function workerStatus(DateTimeInterface $claimCutoff): array
+    {
         $activeClaims = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_CLAIMED)
             ->where('claimed_at', '>=', $claimCutoff)
@@ -101,41 +140,24 @@ final class CrawlStatusService
             ];
         }
 
+        return $workers;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function runsStatus(): array
+    {
         $runs = CrawlRun::query()
-            ->where('started_at', '>=', $dayCutoff)
+            ->where('started_at', '>=', now()->subDay())
             ->get();
 
-        $runs24h = [
+        return [
             'runs' => $runs->count(),
             'pages_fetched' => (int) $runs->sum('pages_fetched'),
             'movies_new' => (int) $runs->sum('movies_new'),
             'movies_updated' => (int) $runs->sum('movies_updated'),
             'failures' => (int) $runs->sum('failures'),
-        ];
-
-        return [
-            'checked_at' => $now->toIso8601String(),
-            'counts' => [
-                'movies' => (int) Movie::query()->count(),
-                'performers' => (int) Performer::query()->count(),
-            ],
-            'ingest' => [
-                'movies_1h' => $this->newSince(Movie::class, 'first_seen_at', 3600),
-                'movies_24h' => $this->newSince(Movie::class, 'first_seen_at', 86400),
-                'performers_1h' => $this->newSince(Performer::class, 'first_seen_at', 3600),
-                'performers_24h' => $this->newSince(Performer::class, 'first_seen_at', 86400),
-            ],
-            'queue' => [
-                'by_status' => $queueByStatus,
-                'by_kind_status' => $pendingKinds,
-                'oldest_pending_at' => $oldestPending instanceof DateTimeInterface
-                    ? $oldestPending->format(DATE_ATOM)
-                    : null,
-                'stuck_claimed' => $stuckClaimed,
-            ],
-            'sources' => $sourceRows,
-            'workers' => $workers,
-            'runs_24h' => $runs24h,
         ];
     }
 
