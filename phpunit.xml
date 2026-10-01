@@ -16,6 +16,12 @@
         <include>
             <directory>app</directory>
         </include>
+        <exclude>
+            <!-- CLI orchestration is verified through smoke/integration runs. -->
+            <directory>app/Console/Commands</directory>
+            <!-- CrawlerX is an external process boundary; jobs use a fixture-backed adapter in unit tests. -->
+            <file>app/Services/Crawler/CrawlerxClient.php</file>
+        </exclude>
     </source>
     <php>
         <env name="APP_ENV" value="testing" force="true"/>
