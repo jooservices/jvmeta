@@ -6,9 +6,9 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl-tick` → `make crawl-dispatch` (worker in compose). 21 sources in `config/jvmeta_sources.php` — **movies and performers** (and eporner gallery) by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 21 sources in `config/jvmeta_sources.php` — **movies and performers** (and eporner gallery) by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
-- **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `lookup_performers`, `get_performer`.
+- **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_performer`.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
 
 ## Site capability matrix
@@ -73,10 +73,10 @@ cp -n .env.example .env
 
 make build
 make install
-make up                 # app (api/worker×N/scheduler) + postgres + mongo + elasticsearch + flaresolverr + openobserve
+make up                 # full local stack, including embedder
 make migrate
-make crawl-tick         # enqueue all sites
-make crawl-dispatch     # claim buffer → named Laravel queues
+make crawl ACTION=tick       # enqueue all sites
+make crawl ACTION=dispatch   # claim buffer → named Laravel queues
 # N worker containers (JVMETA_WORKER_INSTANCES) × 5 queues × JVMETA_WORKERS_PER_QUEUE processes
 ```
 
@@ -89,12 +89,13 @@ make crawl-dispatch     # claim buffer → named Laravel queues
 | `openobserve` | `openobserve` | Observability (can be external) |
 | `flare` | `flaresolverr` | Cloudflare bypass for crawling (can be external) |
 | `control` | `scheduler`, `mcp` | Control-plane: run on **ONE** instance only (scheduler duplicates jobs/alerts) |
+| `embed` | `embedder` | Semantic-search embedding service |
 | `mcp` | `mcp` | On-demand MCP server (stdio) |
 
-- Local (develop default): `make up` = `docker compose --profile app,data,openobserve,flare,control up -d`.
-- Production crawler instance: `make up-crawler` = `--profile app,flare` (no scheduler).
-- Production control instance (one only): `make up-control` = `--profile app,control` (scheduler + mcp).
-- External mode (data/obs/flare point to remote endpoints via `.env`): `make up-ext` = `--profile app up -d` — no bundled DB/obs/flare containers run.
+- Local (develop default): `make up` = `docker compose --profile app,data,openobserve,flare,control,embed up -d`.
+- Production crawler instance: `make up MODE=crawler` = `worker + flaresolverr` (no API; data/observability external).
+- Production control instance (one only): `make up MODE=control` = `api + scheduler + mcp + embedder` (no worker; crawl/data dependencies external).
+- Production single node: `make up MODE=node` = control + crawler on one host (data/observability external).
 - Boot gate: each app container runs `ready-check` first; if any **required** endpoint (DB, Mongo, ES, OpenObserve when enabled, FlareSolverr) is unreachable after retries it exits → container down. `OPENOBSERVE_ENABLED=false` skips the OpenObserve check.
 
 API (create key first via admin token):
@@ -108,7 +109,7 @@ MCP (stdio for AI clients) — set `JVMETA_MCP_API_KEY` to an **active** `jvm_�
 
 ```bash
 docker compose --profile mcp run --rm mcp
-# tools: lookup_movies, get_movie, lookup_performers, get_performer
+# tools: lookup_movies, get_movie, search, lookup_performers, get_performer
 ```
 
 **MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
@@ -125,8 +126,9 @@ curl -s -H "X-Api-Key: $JVMETA_MCP_API_KEY" \
 
 **Semantic search** (optional embedder, profile `embed`): movies/performers are embedded with a multilingual E5 model and stored as `dense_vector` in Elasticsearch (kNN). MCP tool `search` answers natural-language queries; keyword search still works when the embedder is off.
 
-- Run the embedder on the parent node: `make up-embed` (`EMBEDDER_URL=http://embedder:8000`); crawler nodes point `EMBEDDER_URL=http://<parent>:8000`.
-- Create/recreate ES vector mappings + backfill: `docker compose run --rm --no-deps api php artisan es:setup --reindex`.
+- Local `make up` starts the embedder (`EMBEDDER_URL=http://embedder:8000`); production crawler nodes point `EMBEDDER_URL=http://<parent>:8000`.
+- Create/update ES vector mappings: `make setup SERVICE=elasticsearch`.
+- Recreate mappings and re-index all movies and performers: `make setup SERVICE=elasticsearch REINDEX=1`.
 
 ## Fetch / CF bypass
 
@@ -144,17 +146,19 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 | Target | Meaning |
 |---|---|
 | `make up` / `down` | Start/stop full local stack (keeps `./data`) |
-| `make up-ext` | External mode: only `app` containers (data/obs/flare external) |
-| `make up-crawler` | Production crawler instance: `app,flare` |
-| `make up-control` | Production control instance (one only): `app,control` (scheduler + mcp) |
-| `make up-node` | Production single node: `app,flare,control` (data/obs external) |
+| `make up MODE=crawler` | Production crawler instance: `worker,flaresolverr` (data/obs external) |
+| `make up MODE=control` | Production control instance (one only): `api,scheduler,mcp,embedder` (crawl/data dependencies external) |
+| `make up MODE=node` | Production single node: control + crawler (data/obs external) |
 | `make migrate` | Run migrations |
-| `make crawl-tick` | Enqueue listings for all enabled sites |
-| `make crawl-dispatch` | Buffer → Laravel jobs on named queues |
-| `make crawl-source SITE=onejav` | One site |
-| `make worker` | Start/restart worker containers (`JVMETA_WORKER_INSTANCES`) |
+| `make migrate MODE=fresh` | Reset and recreate the database schema (local only) |
+| `make setup SERVICE=elasticsearch` | Create/update Elasticsearch mappings |
+| `make setup SERVICE=elasticsearch REINDEX=1` | Create/update mappings and re-index all data |
+| `make crawl ACTION=tick` | Enqueue listings for all enabled sites |
+| `make crawl ACTION=dispatch` | Buffer → Laravel jobs on named queues |
+| `make crawl ACTION=source SITE=onejav` | Tick and dispatch one site |
 | `make scheduler` | One-off scheduler |
-| `make test` / `lint` / `analyse` | Quality |
+| `make test` | PHPUnit tests |
+| `make lint` | Full Composer quality gate |
 
 ## Project docs
 

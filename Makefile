@@ -1,12 +1,12 @@
 DOCKER_COMPOSE ?= docker compose
 PHP_SERVICE ?= api
+MODE ?= local
 
 # Profile flag groups (repeat --profile per value: comma form is not parsed).
 PROFILE_ALL = --profile app --profile data --profile openobserve --profile flare --profile control --profile embed
 PROFILE_CRAWLER = --profile app --profile flare
 PROFILE_CONTROL = --profile app --profile control --profile embed
 PROFILE_NODE = --profile app --profile flare --profile control --profile embed
-PROFILE_EMBED = --profile embed
 
 # Worker instances come from .env (JVMETA_WORKER_INSTANCES); override on the
 # command line wins: `make up JVMETA_WORKER_INSTANCES=4`.
@@ -15,15 +15,19 @@ ifneq ($(strip $(shell grep -E '^JVMETA_WORKER_INSTANCES=' .env 2>/dev/null)),)
 JVMETA_WORKER_INSTANCES := $(shell grep -E '^JVMETA_WORKER_INSTANCES=' .env 2>/dev/null | head -1 | cut -d= -f2-)
 endif
 
-APP_SERVICES = api worker
+API_SERVICES = api
+WORKER_SERVICES = worker
 CONTROL_SERVICES = scheduler mcp
 DATA_SERVICES = postgres mongo elasticsearch
 OBS_SERVICES = openobserve
 FLARE_SERVICES = flaresolverr
 EMBED_SERVICES = embedder
-LOCAL_SERVICES = $(APP_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
+CRAWLER_SERVICES = $(WORKER_SERVICES) $(FLARE_SERVICES)
+CONTROL_NODE_SERVICES = $(API_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
+NODE_SERVICES = $(CONTROL_NODE_SERVICES) $(CRAWLER_SERVICES)
+LOCAL_SERVICES = $(API_SERVICES) $(WORKER_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
 
-.PHONY: analyse build crawl-dispatch crawl-source crawl-tick down install lint migrate migrate-fresh scheduler shell test up up-control up-crawler up-embed up-ext up-node validate worker
+.PHONY: build crawl down install lint migrate scheduler setup shell test up validate
 
 build:
 	$(DOCKER_COMPOSE) build
@@ -35,7 +39,7 @@ shell:
 	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) bash
 
 validate:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer validate
+	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer validate --strict
 
 lint:
 	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer lint
@@ -43,54 +47,84 @@ lint:
 test:
 	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer test
 
-analyse:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer analyse
-
 migrate:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan migrate --force
+	@case "$(MODE)" in \
+		local|"") \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan migrate --force; \
+			;; \
+		fresh) \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) sh -lc 'if [ "$$APP_ENV" != "local" ]; then echo "migrate MODE=fresh is allowed only when APP_ENV=local."; exit 2; fi; php artisan migrate:fresh --force'; \
+			;; \
+		*) \
+			echo "Unsupported MODE='$(MODE)' for migrate. Use MODE=fresh or omit MODE."; \
+			exit 2; \
+			;; \
+	esac
 
-migrate-fresh:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan migrate:fresh --force
+setup:
+	@case "$(SERVICE)" in \
+		elasticsearch) \
+			if [ "$(REINDEX)" = "1" ]; then \
+				$(DOCKER_COMPOSE) run --rm --no-deps $(PHP_SERVICE) php artisan es:setup --reindex; \
+			else \
+				$(DOCKER_COMPOSE) run --rm --no-deps $(PHP_SERVICE) php artisan es:setup; \
+			fi; \
+			;; \
+		*) \
+			echo "Unsupported SERVICE='$(SERVICE)'. Use SERVICE=elasticsearch."; \
+			exit 2; \
+			;; \
+	esac
 
-# Local full stack: all bundled services in Docker (develop default).
+# Modes:
+# - local: all bundled services (develop default).
+# - crawler: worker + FlareSolverr; data/observability are external.
+# - control: API + scheduler + MCP + embedder; crawl/data dependencies are external.
+# - node: control + crawler on one host; data/observability are external.
 up:
-	@test -f .env || cp .env.example .env
-	$(DOCKER_COMPOSE) $(PROFILE_ALL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(LOCAL_SERVICES)
-
-# External mode: only app services run here; data/obs/flare point at external endpoints via .env.
-up-ext:
-	$(DOCKER_COMPOSE) --profile app up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES)
-
-# Production crawler instance: app + workers + flaresolverr (no scheduler/mcp).
-up-crawler:
-	$(DOCKER_COMPOSE) $(PROFILE_CRAWLER) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(FLARE_SERVICES)
-
-# Production control instance (ONE only): app + workers + scheduler + mcp.
-up-control:
-	$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
-
-# Production single node: app + workers + scheduler + mcp + flaresolverr + embedder (data/obs external).
-up-node:
-	$(DOCKER_COMPOSE) $(PROFILE_NODE) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(APP_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
-
-# Embedder only (semantic search): run on the parent node; crawler nodes just point EMBEDDER_URL at it.
-up-embed:
-	$(DOCKER_COMPOSE) $(PROFILE_EMBED) up -d $(EMBED_SERVICES)
+	@case "$(MODE)" in \
+		local) \
+			test -f .env || cp .env.example .env; \
+			$(DOCKER_COMPOSE) $(PROFILE_ALL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(LOCAL_SERVICES); \
+			;; \
+		crawler) \
+			$(DOCKER_COMPOSE) $(PROFILE_CRAWLER) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(CRAWLER_SERVICES); \
+			;; \
+		control) \
+			$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d $(CONTROL_NODE_SERVICES); \
+			;; \
+		node) \
+			$(DOCKER_COMPOSE) $(PROFILE_NODE) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(NODE_SERVICES); \
+			;; \
+		*) \
+			echo "Unsupported MODE='$(MODE)'. Use MODE=local, crawler, control, or node."; \
+			exit 2; \
+			;; \
+	esac
 
 down:
 	$(DOCKER_COMPOSE) $(PROFILE_ALL) down
 
-worker:
-	$(DOCKER_COMPOSE) --profile app up -d --scale worker=$(JVMETA_WORKER_INSTANCES) worker
-
 scheduler:
 	$(DOCKER_COMPOSE) run --rm scheduler
 
-crawl-tick:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:tick
-
-crawl-dispatch:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:dispatch
-
-crawl-source:
-	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:source $(SITE) --dispatch --limit=$(or $(LIMIT),20)
+crawl:
+	@case "$(ACTION)" in \
+		tick) \
+			if [ -n "$(SITE)" ]; then \
+				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:tick --source=$(SITE) --limit=$(or $(LIMIT),50); \
+			else \
+				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:tick --limit=$(or $(LIMIT),50); \
+			fi; \
+			;; \
+		dispatch) \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:dispatch --limit=$(or $(LIMIT),50); \
+			;; \
+		source) \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:source $(SITE) --dispatch --limit=$(or $(LIMIT),20); \
+			;; \
+		*) \
+			echo "Unsupported ACTION='$(ACTION)'. Use ACTION=tick, dispatch, or source."; \
+			exit 2; \
+			;; \
+	esac
