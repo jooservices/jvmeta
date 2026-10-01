@@ -17,9 +17,15 @@ if ($xml === false || ! isset($xml->project->metrics)) {
 }
 
 $metrics = $xml->project->metrics;
-$statements = (int) $metrics['statements'];
-$covered = (int) $metrics['coveredstatements'];
-$percentage = $statements === 0 ? 100.0 : ($covered / $statements) * 100.0;
+$statements = filter_var((string) $metrics['statements'], FILTER_VALIDATE_INT);
+$covered = filter_var((string) $metrics['coveredstatements'], FILTER_VALIDATE_INT);
+
+if ($statements === false || $covered === false || $statements <= 0 || $covered < 0 || $covered > $statements) {
+    fwrite(STDERR, "Coverage file {$file} contains invalid statement metrics.\n");
+    exit(1);
+}
+
+$percentage = ($covered / $statements) * 100.0;
 
 printf("Coverage: %.2f%% (%d/%d statements); minimum %.2f%%\n", $percentage, $covered, $statements, $threshold);
 
