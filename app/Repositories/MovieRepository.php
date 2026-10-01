@@ -104,6 +104,22 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
     }
 
     /**
+     * Accurate total for a filter set without hydrating items (Postgres path).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function countFiltered(array $filters): int
+    {
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $q = $q === '' ? null : $q;
+
+        $query = $this->newQuery();
+        $this->applyFilters($query, $filters, $q);
+
+        return $query->count();
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      */
     private function applyFilters(Builder $query, array $filters, ?string $q): void

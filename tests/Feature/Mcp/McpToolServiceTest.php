@@ -4,15 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Mcp;
 
+use App\Models\CrawlQueue;
 use App\Models\Genre;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieGenre;
 use App\Models\MovieMedia;
 use App\Models\Performer;
+use App\Models\Source;
+use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Mcp\McpToolService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class McpToolServiceTest extends TestCase
@@ -28,8 +32,14 @@ final class McpToolServiceTest extends TestCase
             'get_movie',
             'search',
             'lookup_performers',
+            'get_counts',
+            'crawl_status',
+            'system_status',
             'get_performer',
         ], $names);
+
+        $movies = collect(app(McpToolService::class)->definitions())->firstWhere('name', 'lookup_movies');
+        $this->assertArrayHasKey('count_only', $movies['inputSchema']['properties']);
     }
 
     public function test_lookup_movies_returns_filter_sort_and_cursor_metadata(): void
@@ -163,5 +173,76 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame('cheeky', $payload['query']);
         $this->assertGreaterThanOrEqual(1, $payload['pagination']['total']);
         $this->assertSame($movie->uuid, $payload['items'][0]['uuid']);
+    }
+
+    public function test_lookup_movies_count_only_returns_count_without_items(): void
+    {
+        Movie::factory()->count(5)->create();
+
+        $payload = app(McpToolService::class)->call('lookup_movies', ['count_only' => true]);
+
+        $this->assertSame(5, $payload['count']);
+        $this->assertArrayNotHasKey('items', $payload);
+        $this->assertArrayNotHasKey('pagination', $payload);
+    }
+
+    public function test_lookup_performers_count_only_returns_count_without_items(): void
+    {
+        Performer::factory()->count(3)->create();
+
+        $payload = app(McpToolService::class)->call('lookup_performers', ['count_only' => true]);
+
+        $this->assertSame(3, $payload['count']);
+        $this->assertArrayNotHasKey('items', $payload);
+    }
+
+    public function test_get_counts_returns_movies_and_performers_totals(): void
+    {
+        Movie::factory()->count(4)->create();
+        Performer::factory()->count(2)->create();
+
+        $payload = app(McpToolService::class)->call('get_counts', []);
+
+        $this->assertSame(4, $payload['movies']);
+        $this->assertSame(2, $payload['performers']);
+    }
+
+    public function test_crawl_status_returns_queue_sources_and_workers(): void
+    {
+        Movie::factory()->count(2)->create();
+        $source = Source::factory()->create(['circuit_state' => Source::CIRCUIT_OPEN]);
+        CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+        app(WorkerHeartbeat::class)->beat('worker-a');
+
+        $payload = app(McpToolService::class)->call('crawl_status', []);
+
+        $this->assertSame(2, $payload['counts']['movies']);
+        $this->assertSame(1, $payload['queue']['by_status']['pending']);
+        $this->assertSame(Source::CIRCUIT_OPEN, $payload['sources'][0]['circuit_state']);
+        $this->assertSame('worker-a', $payload['workers'][0]['instance']);
+        $this->assertFalse($payload['workers'][0]['stale']);
+    }
+
+    public function test_system_status_reports_service_probes(): void
+    {
+        Http::fake([
+            'http://es.example/*' => Http::response(['version' => ['number' => '8.15']], 200),
+            'http://embedder.example/*' => Http::response(['status' => 'ok'], 200),
+        ]);
+        config(['elasticsearch.host' => 'http://es.example']);
+        config(['elasticsearch.embedder_url' => 'http://embedder.example']);
+        config(['openobserve.enabled' => false]);
+
+        $payload = app(McpToolService::class)->call('system_status', []);
+
+        $this->assertSame('ok', $payload['services']['database']['status']);
+        $this->assertSame('ok', $payload['services']['elasticsearch']['status']);
+        $this->assertSame('ok', $payload['services']['embedder']['status']);
+        $this->assertSame('disabled', $payload['services']['observability']['status']);
+        $this->assertContains($payload['status'], ['ok', 'degraded']);
     }
 }

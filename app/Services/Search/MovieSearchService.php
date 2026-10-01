@@ -65,6 +65,16 @@ final class MovieSearchService
     }
 
     /**
+     * Accurate filtered total from the Postgres SoR (no items, no ES cap).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function count(array $filters): int
+    {
+        return $this->movies->countFiltered($filters);
+    }
+
+    /**
      * Natural-language semantic search: embed the query, kNN over ES vectors,
      * hydrate uuids from Postgres. Falls back to keyword search when the
      * embedder or ES vectors are unavailable.
