@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Crawl;
 
 use App\Services\Crawl\WorkerHeartbeat;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 final class WorkerHeartbeatTest extends TestCase
 {
+    use RefreshDatabase;
     public function test_beat_writes_global_and_instance_heartbeat(): void
     {
         $heartbeat = app(WorkerHeartbeat::class);
