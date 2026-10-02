@@ -1,224 +1,211 @@
-# Production deployment runbook
+# Internal deployment runbook
 
-Status: planned runbook. This document is not an execution script and has not
-been used to deploy production.
+Status: planned source-driven deployment. This runbook has not been used to
+complete a production cutover.
 
-## Scope
+## Deployment model
 
-This runbook describes the planned Docker-image deployment for jvmeta when the
-database, search, and observability services are external to the application
-hosts.
+The current private deployment uses GitHub as the source of truth. The target
+VM pulls the requested branch, builds the local Docker runtime, installs the
+locked dependencies, runs the migration, and starts the selected Compose
+services.
 
-Production topology and host addresses are intentionally kept outside this
-repository in the private workspace deployment inventory.
+This flow does not transfer application images with `scp`, publish images to a
+registry, or store image archives in GitHub. Docker still creates local images
+from the repository Dockerfiles and may pull their pinned base images.
 
-## Runtime model
+The existing `docker-compose.yml` remains the deployment Compose file for this
+internal flow. `Dockerfile.production`, `compose.production.yml`, and the
+production image workflow are preparation for a future immutable-image flow;
+they are not used by the scripts below.
 
-The application uses two images:
+## Service roles
 
-| Image | Containers | Purpose |
-| --- | --- | --- |
-| `jvmeta:<release>` | `api`, `worker`, `scheduler`, `mcp` | PHP/Laravel application runtime |
-| `jvmeta-embedder:<release>` | `embedder` | Separate embedding runtime |
+The control VM runs:
 
-The PHP image is shared by several containers. The container command defines
-the role; the image does not start every role by itself.
+- `api`
+- `scheduler`
+- `mcp`
+- `embedder`
 
-Production roles are:
+The control VM must not run `worker` or `flaresolverr`. Those belong to crawler
+VMs. PostgreSQL, MongoDB, Elasticsearch, and OpenObserve remain external and
+are configured through the private `.env` file.
 
-- Control: `api`, `scheduler`, `mcp`, and `embedder`.
-- Crawler: `worker` and `flaresolverr`.
-- External dependencies: PostgreSQL, MongoDB, Elasticsearch, and
-  OpenObserve. These services are not rebuilt or managed as application
-  containers by this runbook.
+Only one control VM runs `scheduler`; starting multiple schedulers duplicates
+scheduled work and alerts.
 
-Only one control instance runs the scheduler. Multiple schedulers would
-duplicate scheduled jobs and alerts.
+## Preconditions
 
-## Current-state prerequisite
+The target VM must have:
 
-The current development Compose setup is not yet a pure image deployment:
+- Git with authenticated access to the private GitHub repository.
+- Docker Engine enabled at boot.
+- Docker Compose v2.
+- The `joos` user allowed to run Docker.
+- Network access to GitHub, the external dependencies, and Python package/model
+  sources required by the embedder build.
+- A private runtime `.env` file containing the external service configuration.
 
-- The application services bind-mount the repository and sibling package
-  clones.
-- The current `Dockerfile` provides the PHP/Node runtime and helper scripts,
-  but does not yet copy the application source or install its Composer
-  dependencies into the image.
+The current Compose file bind-mounts these sibling package repositories:
 
-The production image build and Compose configuration are now prepared so that
-release images contain their source and dependencies and do not depend on host
-source mounts. The preparation files are:
-
-- `Dockerfile.production` for the PHP application image.
-- `embedder/Dockerfile.production` and
-  `embedder/requirements.production.txt` for the CPU-only embedder image.
-- `compose.production.yml` for explicit control, crawler, and migration
-  profiles.
-- `deploy/production.env.example` for a placeholder-only runtime
-  configuration template.
-
-The existing `Dockerfile` and `docker-compose.yml` remain the local
-development setup.
-
-## Image contract
-
-1. Build both application images once from the approved release tag for the
-   target host architecture.
-2. Run Composer installation while building `jvmeta:<release>`; do not run
-   `composer install` on production hosts.
-3. Publish the images to the approved private or internal image distribution
-   mechanism. The registry is intentionally not fixed in this document.
-4. Record the immutable digest for every image.
-5. Deploy the recorded digests, not mutable tags such as `latest` or
-   `php85`.
-
-The production Compose configuration must not bind-mount the source tree or
-local package clones. Otherwise host files can override the code and
-dependencies that were built into the release image.
-
-The production Compose file also separates the readiness contract: crawler
-containers require FlareSolverr, while control-plane containers set
-`CRAWLERX_FLARESOLVERR_REQUIRED=false` because they do not run the crawler
-sidecar.
-
-The control Compose profile publishes the embedder through
-`JVMETA_EMBEDDER_BIND`. Keep it on loopback for control-only operation. Before
-external crawler nodes use this embedder, bind it to the control host's
-private/LAN address and restrict access with the host or network firewall.
-
-## Deployment sequence
-
-### 1. Build and publish the release images
-
-Build and verify:
-
-- `jvmeta:<release>`.
-- `jvmeta-embedder:<release>`.
-
-Build the PHP image with `Dockerfile.production` and the embedder image with
-`embedder/Dockerfile.production`:
-
-```bash
-docker build --platform linux/amd64 \
-  -f Dockerfile.production \
-  -t jvmeta:<release> .
-
-docker build --platform linux/amd64 \
-  -f embedder/Dockerfile.production \
-  -t jvmeta-embedder:<release> embedder
+```text
+../client
+../dto
+../exceptions
+../laravel-controller
+../laravel-repository
 ```
 
-The embedder uses CPU-only PyTorch; CUDA is not required for vector storage or
-normal embedding on the control instance. Record the internal deployment
-version, source commit, image digests, and intended service configuration
-before touching production. This is an internal/private deployment artifact,
-not a public release.
+They must exist beside the application checkout on the target VM. Pull or
+clone them from their GitHub repositories before starting the Laravel
+services; do not allow Compose to create empty replacement directories.
 
-### 2. Run read-only preflight checks
+## Deployment scripts
 
-Check every application host for:
+Both scripts clone the application when `JVMETA_APP_DIR` does not exist, or
+perform a fast-forward-only pull when it is already a clean checkout. They
+fail on a dirty checkout, a branch mismatch, a missing `.env`, a failed build,
+or a failed command. They never print the `.env` contents.
 
-- Docker and Compose availability.
-- Available disk and memory.
-- Access to the private image distribution mechanism.
-- Current container state and image digests.
-- Reachability of all configured external dependencies.
-- Current application health, queue state, and worker heartbeats.
+### Laravel control deployment
 
-The deployment must target explicit services. It must not start every Compose
-profile or enable bundled data services accidentally.
+`deploy/laravel.sh` performs:
 
-### 3. Stop the scheduler
+1. Clone or pull the configured GitHub branch.
+2. Validate that control mode disables the FlareSolverr requirement.
+3. Build the PHP Docker runtime locally.
+4. Run `composer install --no-dev` inside the PHP container.
+5. Run `php artisan migrate --force` once.
+6. Run `php artisan optimize:clear`.
+7. Recreate `api` and `mcp`.
 
-Stop only the control-plane scheduler. Keep the API and MCP services available
-until the control deployment begins.
+The script intentionally leaves `scheduler` stopped until the control services
+have been verified.
 
-This prevents new scheduled crawl work from being created before the old
-control stack is replaced.
+### Python embedder deployment
 
-### 4. Cut over the current control VM
+`deploy/python.sh` performs:
 
-For the current control-only cutover, do not wait for the worker that is
-incorrectly running on the old control Compose stack. Stop the scheduler first,
-then bring down the old stack without removing volumes. The queue is external,
-so queued work remains available, but any active worker job may be interrupted
-and become retryable after the queue visibility timeout. Verify queue
-processing after the new control stack starts.
+1. Clone or pull the configured GitHub branch.
+2. Build the embedder Docker runtime locally. The Docker build runs `pip
+   install` from `embedder/requirements.txt`.
+3. Recreate `embedder`.
+4. Wait for `/healthz`.
+5. Send a real `/v1/embeddings` request to download/warm the model and verify
+   vector generation.
 
-### 5. Deploy the control plane
+Python dependencies are installed during the Docker build, not on every
+container start.
 
-On the control instance:
+### Script variables
 
-1. Pull the recorded `jvmeta` and `jvmeta-embedder` image digests.
-2. If the release contains a migration, run `php artisan migrate --force`
-   exactly once from the release image.
-3. Start only `api`, `mcp`, and `embedder` with the new image digests; keep
-   `scheduler` stopped until verification passes.
-4. Verify the API, MCP, embedder, logs, and dependency connectivity.
-5. Start `scheduler` and verify that its scheduled loop is running.
+The defaults are suitable for the current VM layout, but all deployment paths
+can be overridden without changing the scripts:
 
-The image-based flow does not run these commands on the production host:
+```bash
+export JVMETA_APP_DIR=/home/joos/jvmeta
+export JVMETA_REPO_URL=https://github.com/jooservices/jvmeta.git
+export JVMETA_BRANCH=develop
+export JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp>
+```
 
-- `composer install`.
-- `php artisan down`.
-- A broad or shared cache flush.
+`JVMETA_ENV_SOURCE` is required when cloning a new checkout. When the checkout
+already contains `.env`, the scripts preserve it and only enforce mode `600`.
 
-Composer dependencies belong in the image. Container replacement and health
-checks provide the deployment boundary. Cache handling must be part of the
-image/startup design and must not clear shared application data as a side
-effect.
+## Control-only cutover
 
-The prepared `migrate` service is intended to run explicitly with the
-production Compose file and private runtime environment. It must not be
-started as part of every application service.
+### 1. Read-only preflight
 
-### 6. Deploy crawler instances one at a time
+Record the Docker/Compose versions, disk and memory, current Git revision,
+container state, external dependency health, and the location of `.env`.
 
-Apply the same procedure to each crawler instance, one at a time:
+### 2. Backup runtime configuration
 
-1. Pull the recorded `jvmeta` image digest.
-2. Gracefully stop the idle worker.
-3. Recreate only the `worker` service.
-4. Recreate `flaresolverr` only when its image or configuration is part of
-   the release.
-5. Verify the worker before moving to the next crawler instance.
+Back up `.env` to a private path with mode `600` and verify its checksum. Do
+not commit or print the backup. Keep the backup until the new control stack
+passes verification.
 
-The crawler does not use `php artisan down` because it does not serve the
-Laravel HTTP API.
+### 3. Stop the old stack
 
-### 7. Start the scheduler
+Stop `scheduler` first. For the current control-only cutover, do not wait for
+the worker currently running on the old control stack to drain. Then bring
+down the old Compose stack without removing volumes:
 
-For a control-only deployment, start the scheduler after the control services
-pass verification as described in step 5. If crawler rollout is part of the
-same release, wait until every crawler instance passes verification before
-starting the single scheduler.
+```bash
+docker compose --profile app --profile control --profile embed down
+```
 
-Do not manually run crawl commands as a deployment health check. The scheduler
-should resume normal operation through its configured schedule.
+This can interrupt an active worker job. Queue data is external, so queued work
+remains available, but an active job may become retryable after the queue
+visibility timeout. Never use `down -v`, `docker volume prune`, or
+`docker system prune`.
 
-### 8. Verify the complete topology
+### 4. Preserve the old checkout
 
-Verify that:
+Rename the old checkout instead of deleting it:
 
-- The control instance runs `api`, `scheduler`, `mcp`, and `embedder`.
-- Each crawler instance runs only `worker` and `flaresolverr`.
-- All application containers use the recorded image digests.
-- API and MCP health checks pass.
-- Embedder connectivity passes.
-- Worker heartbeats are current.
-- Queue counts and failure rates are stable.
-- External dependencies remain reachable.
-- No unexpected containers or profiles are running.
+```text
+/home/joos/jvmeta
+→ /home/joos/jvmeta.previous.<timestamp>
+```
 
-## Explicitly out of scope
+Clone the requested GitHub branch into the original path. Keep the previous
+checkout and the `.env` backup until verification completes.
 
-The following are intentionally not automated by this runbook yet:
+### 5. Build and prepare dependencies
 
-- External backup or snapshot verification.
-- Rollback automation.
-- Registry selection and credentials.
-- Production execution.
-- The deployment Bash script.
+Run the Python script first so the embedder is available:
 
-Those concerns require separate decisions and implementation before this
-runbook becomes an executable deployment tool.
+```bash
+JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp> \
+  /home/joos/jvmeta/deploy/python.sh
+```
+
+Then run the Laravel script:
+
+```bash
+JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp> \
+  /home/joos/jvmeta/deploy/laravel.sh
+```
+
+The scripts must be run as the deployment user, not by copying secrets into
+the repository.
+
+### 6. Verify before starting the scheduler
+
+Confirm:
+
+- `api`, `mcp`, and `embedder` are running.
+- API health reports external database and search connectivity.
+- The embedder health endpoint passes.
+- A real embedding request succeeds.
+- MCP starts without errors and its smoke request succeeds.
+- No `worker` or `flaresolverr` container exists on the control VM.
+- Logs contain no startup errors.
+
+### 7. Start and verify the scheduler
+
+Only after the previous checks pass:
+
+```bash
+docker compose --profile app --profile control --profile embed up -d scheduler
+```
+
+Verify the scheduler process is running, observe at least one scheduled loop,
+and confirm queue activity through the API/status checks. Do not manually run
+crawl commands as a deployment health check.
+
+## Failure handling
+
+The scripts stop on the first failure. Do not retry a failed migration or
+recreate services blindly. Record the command and error, then decide whether
+to restore the previous checkout and environment. No automatic rollback or
+external database restore is performed by these scripts.
+
+## Rollback preparation
+
+Keep the previous checkout, the `.env` backup, and Docker's local image cache
+until verification is complete. A rollback restores the previous checkout and
+runtime environment, rebuilds the required local runtime, and starts the old
+Compose service set. Do not delete old volumes during rollback.
