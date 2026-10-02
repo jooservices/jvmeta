@@ -50,7 +50,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         SourceCircuitBreaker $breaker,
         SourceThrottle $throttle,
     ): void {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_PERFORMER_DETAIL);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_PERFORMER_DETAIL) {
             return;
         }

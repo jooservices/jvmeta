@@ -49,7 +49,7 @@ final class FetchGalleryJob implements ShouldQueue
         SourceCircuitBreaker $breaker,
         SourceThrottle $throttle,
     ): void {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_GALLERY);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_GALLERY) {
             return;
         }

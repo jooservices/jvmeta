@@ -93,7 +93,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/torrent/no-extractable-code',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
         $sink = new FakeMovieDraftSink();
@@ -118,7 +118,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => 'mystery',
             'url' => 'https://mystery.test/v/1',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
 
@@ -137,7 +137,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => 'ghost',
             'url' => 'https://ghost.test/v/1',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
@@ -167,7 +167,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/torrent/ymds282',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
     }

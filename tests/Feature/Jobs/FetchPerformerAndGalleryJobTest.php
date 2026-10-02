@@ -37,7 +37,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://warashi-asian-pornstars.fr/en/s-2-2/female-pornstars/toutes/all/page/1',
             'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -75,7 +75,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://xxx.xcity.jp/idol/',
             'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -116,7 +116,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://www.javdatabase.com/idols/airi-suzumura/',
             'kind' => CrawlQueue::KIND_PERFORMER_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -181,7 +181,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://www.eporner.com/gallery/xKeoFe7VHmO/Iori-Kogawa-STAR-836/',
             'kind' => CrawlQueue::KIND_GALLERY,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(

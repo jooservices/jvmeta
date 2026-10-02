@@ -45,7 +45,7 @@ final class FetchListingJob implements ShouldQueue
 
     public function handle(CrawlerxClient $client, CrawlQueueService $queue, SourceCircuitBreaker $breaker, SourceThrottle $throttle): void
     {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_LISTING);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_LISTING) {
             return;
         }

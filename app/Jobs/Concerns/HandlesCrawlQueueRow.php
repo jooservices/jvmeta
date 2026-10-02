@@ -7,6 +7,7 @@ namespace App\Jobs\Concerns;
 use App\Events\CrawlIncidentOccurred;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Observability\ObservabilityEmitter;
 use App\Models\Source;
 use App\Services\Crawl\Soft404Detector;
 use App\Services\Crawl\SourceCircuitBreaker;
@@ -23,11 +24,29 @@ use Illuminate\Support\Facades\Event;
  */
 trait HandlesCrawlQueueRow
 {
-    private function queueRow(int $id): ?CrawlQueue
+    private function queueRow(int $id, string $expectedKind): ?CrawlQueue
     {
         $row = CrawlQueue::query()->find($id);
 
-        return $row instanceof CrawlQueue ? $row : null;
+        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED) {
+            $kind = $expectedKind;
+            $status = 'missing';
+            if ($row instanceof CrawlQueue) {
+                $kind = $row->kind;
+                $status = $row->status;
+            }
+
+            app(ObservabilityEmitter::class)->emitOps('crawl_job_skipped', [
+                'crawl_queue_id' => $id,
+                'kind' => $kind,
+                'status' => $status,
+                'job' => static::class,
+            ]);
+
+            return null;
+        }
+
+        return $row;
     }
 
     private function markDone(CrawlQueue $row): void

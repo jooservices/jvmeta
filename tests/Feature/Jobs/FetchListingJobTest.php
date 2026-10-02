@@ -237,7 +237,7 @@ final class FetchListingJobTest extends TestCase
             'source_slug' => 'ghost',
             'url' => 'https://ghost.test/new',
             'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'));
@@ -279,7 +279,7 @@ final class FetchListingJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/new',
             'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
     }
