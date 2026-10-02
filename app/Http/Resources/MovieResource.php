@@ -6,11 +6,13 @@ namespace App\Http\Resources;
 
 use App\Data\Api\MovieResourceData;
 use App\Http\Resources\Concerns\FormatsResourceValues;
+use App\Http\Resources\Concerns\FormatsPhotos;
 use App\Models\Movie;
 use App\Models\MovieCredit;
 use App\Models\MovieMedia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * Full movie detail for GET /movies/{code}.
@@ -19,6 +21,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class MovieResource extends JsonResource
 {
     use FormatsResourceValues;
+    use FormatsPhotos;
 
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
@@ -64,6 +67,11 @@ final class MovieResource extends JsonResource
             'magnets' => $this->media($resource, MovieMedia::KIND_MAGNET),
             'hls_stream_urls' => $this->media($resource, MovieMedia::KIND_HLS),
             'gallery' => $this->media($resource, MovieMedia::KIND_GALLERY),
+            'photos' => $this->photos(
+                $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                [MovieMedia::KIND_SAMPLE],
+                MovieMedia::KIND_GALLERY,
+            )->toArray(),
             'crawled_at' => $this->dateTimeString($resource->getAttribute('crawled_at')),
             'delisted_at' => $this->dateTimeString($resource->getAttribute('delisted_at')),
             'needs_review' => (bool) $resource->needs_review,

@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Data\Api\PhotosDto;
+use App\Http\Resources\Concerns\FormatsPhotos;
 use App\Http\Resources\Concerns\FormatsResourceValues;
 use App\Models\Performer;
+use App\Models\PerformerMedia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * Full performer detail for GET /performers/{id}.
@@ -16,6 +20,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class PerformerResource extends JsonResource
 {
     use FormatsResourceValues;
+    use FormatsPhotos;
 
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
@@ -38,6 +43,7 @@ final class PerformerResource extends JsonResource
                     'location' => null,
                     'attrs' => [],
                     'linked_title_count' => null,
+                    'photos' => (new PhotosDto())->toArray(),
                 ],
             );
         }
@@ -64,6 +70,11 @@ final class PerformerResource extends JsonResource
                 'linked_title_count' => $this->whenCounted('movies'),
                 'profile_url' => $resource->profile_url,
                 'image_url' => $resource->image_url,
+                'photos' => $this->photos(
+                    $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                    [PerformerMedia::KIND_IMAGE],
+                    PerformerMedia::KIND_GALLERY,
+                )->toArray(),
             ];
         }
 

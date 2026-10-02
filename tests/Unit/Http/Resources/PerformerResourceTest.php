@@ -51,5 +51,6 @@ final class PerformerResourceTest extends TestCase
         self::assertArrayHasKey('bio_text', $payload);
         self::assertArrayHasKey('attrs', $payload);
         self::assertArrayHasKey('linked_title_count', $payload);
+        self::assertSame(['images' => [], 'galleries' => []], $payload['photos']);
     }
 }

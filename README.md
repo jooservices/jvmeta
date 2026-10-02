@@ -116,6 +116,44 @@ docker compose --profile mcp run --rm mcp
 # tools: lookup_movies, get_movie, search, lookup_performers, get_performer
 ```
 
+Movie and performer detail responses (`get_movie`, `get_performer`, and the
+corresponding detail API endpoints) expose the same photo contract:
+
+```json
+{
+  "photos": {
+    "images": [
+      {
+        "url": "https://cdn.example/image.jpg",
+        "thumbnail_url": "https://cdn.example/thumb.jpg",
+        "crawled_at": "2026-10-01T00:00:00+00:00",
+        "source": "javphotos"
+      }
+    ],
+    "galleries": [
+      {
+        "id": "gallery-123",
+        "title": "Example gallery",
+        "url": "https://example/gallery-123",
+        "source": "javphotos",
+        "crawled_at": "2026-10-01T00:00:00+00:00",
+        "images": [
+          {
+            "url": "https://cdn.example/image.jpg",
+            "thumbnail_url": "https://cdn.example/thumb.jpg",
+            "crawled_at": "2026-10-01T00:00:00+00:00",
+            "source": "javphotos"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`source` is the stable source slug. Only URL references are stored; image
+binary content is not downloaded into JVMeta.
+
 **MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
 
 ```bash

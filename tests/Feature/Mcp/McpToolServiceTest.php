@@ -11,6 +11,7 @@ use App\Models\MovieCode;
 use App\Models\MovieGenre;
 use App\Models\MovieMedia;
 use App\Models\Performer;
+use App\Models\PerformerMedia;
 use App\Models\Source;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Mcp\McpToolService;
@@ -90,11 +91,18 @@ final class McpToolServiceTest extends TestCase
             'code' => 'SSIS-001',
             'code_normalized' => 'SSIS001',
         ]);
-        MovieMedia::factory()->create([
+        $galleryMedia = MovieMedia::factory()->create([
             'movie_id' => $movie->id,
             'kind' => MovieMedia::KIND_GALLERY,
             'url' => fake()->imageUrl(),
-            'meta' => ['thumbnail_url' => fake()->imageUrl()],
+            'source_slug' => fake()->slug(2),
+            'meta' => [
+                'gallery_id' => fake()->uuid(),
+                'gallery_title' => fake()->sentence(),
+                'gallery_url' => fake()->url(),
+                'thumbnail_url' => fake()->imageUrl(),
+                'position' => 1,
+            ],
         ]);
 
         $payload = app(McpToolService::class)->call('get_movie', ['code' => 'SSIS-001']);
@@ -102,6 +110,8 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame('SSIS-001', $payload['code']);
         $this->assertArrayHasKey('gallery', $payload);
         $this->assertArrayHasKey('thumbnail_url', $payload['gallery'][0]);
+        $this->assertSame($galleryMedia->url, $payload['photos']['galleries'][0]['images'][0]['url']);
+        $this->assertSame($galleryMedia->source_slug, $payload['photos']['galleries'][0]['source']);
     }
 
     public function test_lookup_performers_searches_bio_and_returns_cursor_metadata(): void
@@ -161,6 +171,37 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame($performer->uuid, $payload['uuid']);
         $this->assertSame($performer->bio_text, $payload['bio_text']);
         $this->assertSame('B', $payload['blood_type']);
+    }
+
+    public function test_get_performer_returns_common_photos_contract(): void
+    {
+        $performer = Performer::factory()->create();
+        $profile = PerformerMedia::factory()->create([
+            'performer_id' => $performer->id,
+            'kind' => PerformerMedia::KIND_IMAGE,
+            'url' => fake()->imageUrl(),
+            'source_slug' => fake()->slug(2),
+        ]);
+        $gallery = PerformerMedia::factory()->create([
+            'performer_id' => $performer->id,
+            'kind' => PerformerMedia::KIND_GALLERY,
+            'url' => fake()->imageUrl(),
+            'source_slug' => fake()->slug(2),
+            'meta' => [
+                'gallery_id' => fake()->uuid(),
+                'gallery_title' => fake()->sentence(),
+                'gallery_url' => fake()->url(),
+                'thumbnail_url' => fake()->imageUrl(),
+                'position' => 1,
+            ],
+        ]);
+
+        $payload = app(McpToolService::class)->call('get_performer', ['id' => $performer->uuid]);
+
+        self::assertSame($profile->url, $payload['photos']['images'][0]['url']);
+        self::assertSame($profile->source_slug, $payload['photos']['images'][0]['source']);
+        self::assertSame($gallery->url, $payload['photos']['galleries'][0]['images'][0]['url']);
+        self::assertSame($gallery->source_slug, $payload['photos']['galleries'][0]['source']);
     }
 
     public function test_search_returns_movies_by_natural_language(): void

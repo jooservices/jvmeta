@@ -56,6 +56,12 @@ class Performer extends Model
         return $this->hasMany(PerformerAlias::class);
     }
 
+    /** @return HasMany<PerformerMedia, $this> */
+    public function media(): HasMany
+    {
+        return $this->hasMany(PerformerMedia::class);
+    }
+
     /** @return HasMany<PerformerSource, $this> */
     public function sources(): HasMany
     {
