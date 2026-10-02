@@ -24,7 +24,7 @@ final class GalleryPersister
     public function persist(string $sourceSlug, string $url, GalleryDto $gallery): void
     {
         $crawledAt = CarbonImmutable::now();
-        $movie = $this->resolveMovie($gallery->title);
+        $movie = $this->resolveMovie($gallery->title, $gallery->metadata);
 
         if ($movie instanceof Movie) {
             foreach ($gallery->photos as $photo) {
@@ -86,8 +86,19 @@ final class GalleryPersister
         }
     }
 
-    private function resolveMovie(?string $title): ?Movie
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function resolveMovie(?string $title, array $metadata): ?Movie
     {
+        $movieCode = $metadata['movie_code'] ?? null;
+        if (is_string($movieCode)) {
+            $movie = $this->resolveMovieCode($movieCode);
+            if ($movie instanceof Movie) {
+                return $movie;
+            }
+        }
+
         if ($title === null || trim($title) === '') {
             return null;
         }
@@ -96,8 +107,13 @@ final class GalleryPersister
             return null;
         }
 
+        return $this->resolveMovieCode($m[1] . '-' . $m[2]);
+    }
+
+    private function resolveMovieCode(string $rawCode): ?Movie
+    {
         try {
-            $normalized = NormalizedCode::from($m[1] . '-' . $m[2]);
+            $normalized = NormalizedCode::from($rawCode);
         } catch (InvalidArgumentException) {
             return null;
         }

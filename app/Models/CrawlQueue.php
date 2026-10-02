@@ -40,7 +40,12 @@ class CrawlQueue extends Model
             'detail' => self::KIND_DETAIL,
             'performer_listing' => self::KIND_PERFORMER_LISTING,
             'performer_detail' => self::KIND_PERFORMER_DETAIL,
-            default => $entityType === 'performer' ? self::KIND_PERFORMER_DETAIL : self::KIND_DETAIL,
+            'gallery' => self::KIND_GALLERY,
+            default => match ($entityType) {
+                'performer' => self::KIND_PERFORMER_DETAIL,
+                'gallery' => self::KIND_GALLERY,
+                default => self::KIND_DETAIL,
+            },
         };
     }
 

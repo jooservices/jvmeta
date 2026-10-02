@@ -22,6 +22,7 @@ final class PerformerNormalizer
 
         $meta = $performer->metadata;
         $size = $this->parseSize($performer->sizeRaw ?? (is_string($meta['size_raw'] ?? null) ? $meta['size_raw'] : null));
+        $measurements = $this->measurements($size, $meta);
         $bio = $this->bioText($performer, $meta);
         $attrs = array_filter([
             'tags' => $performer->tags !== [] ? $performer->tags : null,
@@ -51,16 +52,58 @@ final class PerformerNormalizer
             imageUrl: $performer->profileImageUrl,
             birthDate: $this->dateYmd($performer->birthDateRaw ?? (is_string($meta['birth_date_raw'] ?? null) ? $meta['birth_date_raw'] : null)),
             heightCm: $this->heightCm($performer->heightRaw ?? (is_string($meta['height_raw'] ?? null) ? $meta['height_raw'] : null)),
-            bust: $size['bust'],
-            waist: $size['waist'],
-            hip: $size['hip'],
-            cup: $size['cup'] ?? (is_string($meta['cup'] ?? null) ? $meta['cup'] : null),
+            bust: $measurements['bust'],
+            waist: $measurements['waist'],
+            hip: $measurements['hip'],
+            cup: $measurements['cup'],
             bloodType: is_string($meta['blood_type'] ?? null) ? $meta['blood_type'] : null,
             bioText: $bio,
             debutDate: $this->dateYmd(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null),
             location: is_string($meta['birthplace'] ?? null) ? $meta['birthplace'] : null,
             attrs: $attrs,
         );
+    }
+
+    /**
+     * @param array{bust: ?int, waist: ?int, hip: ?int, cup: ?string} $size
+     * @param array<string, mixed> $meta
+     *
+     * @return array{bust: ?int, waist: ?int, hip: ?int, cup: ?string}
+     */
+    private function measurements(array $size, array $meta): array
+    {
+        return [
+            'bust' => $size['bust'] ?? $this->measurementRaw($meta['bust_raw'] ?? null),
+            'waist' => $size['waist'] ?? $this->measurementRaw($meta['waist_raw'] ?? null),
+            'hip' => $size['hip'] ?? $this->measurementRaw($meta['hip_raw'] ?? null),
+            'cup' => $size['cup'] ?? $this->cupRaw($meta['cup_size'] ?? null) ?? $this->cupRaw($meta['cup'] ?? null),
+        ];
+    }
+
+    private function measurementRaw(mixed $raw): ?int
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        if (preg_match('/(\d{1,3})/', $raw, $m) !== 1) {
+            return null;
+        }
+
+        $value = (int) $m[1];
+
+        return $value >= 30 && $value <= 300 ? $value : null;
+    }
+
+    private function cupRaw(mixed $raw): ?string
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $cup = strtoupper(trim($raw));
+
+        return preg_match('/^[A-Z0-9]{1,20}$/', $cup) === 1 ? $cup : null;
     }
 
     /** @param array<string, mixed> $meta */

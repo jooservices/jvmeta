@@ -81,6 +81,18 @@ final class CrawlTickCommandTest extends TestCase
         ]);
     }
 
+    public function test_tick_enqueues_gallery_listing_urls_as_generic_listing_rows(): void
+    {
+        $this->artisan('crawl:tick', ['--source' => 'javphotos', '--limit' => 1])->assertSuccessful();
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'source_slug' => 'javphotos',
+            'url' => 'https://jav.photos/free/',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+    }
+
     public function test_tick_splits_xcity_movie_and_performer_seeds(): void
     {
         $this->artisan('crawl:tick', ['--source' => 'xcity', '--limit' => 2])->assertSuccessful();
