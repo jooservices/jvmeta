@@ -102,6 +102,8 @@ make crawl ACTION=dispatch   # claim buffer → named Laravel queues
 - Production single node: `make up MODE=node` = control + crawler on one host (data/observability external).
 - Boot gate: each app container runs `ready-check` first; if any **required** endpoint (DB, Mongo, ES, OpenObserve when enabled, FlareSolverr) is unreachable after retries it exits → container down. `OPENOBSERVE_ENABLED=false` skips the OpenObserve check.
 
+The planned image-based production procedure is documented in the [production deployment runbook](docs/03-operations/deployment.md).
+
 API (create key first via admin token):
 
 ```bash

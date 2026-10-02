@@ -4,8 +4,10 @@ Adds to the workspace `AGENTS.md`. Does not weaken any workspace rule.
 
 ## Production VMs — read-only unless confirmed
 
-The jvmeta production nodes (192.168.10.100 control, 192.168.10.101 /
-192.168.10.102 crawlers, and any future jvmeta VM) are **PRODUCTION**.
+The jvmeta production topology is maintained in the private workspace
+deployment inventory. This file intentionally omits production IP addresses.
+The control plane runs on one instance; crawler workers run on the crawler
+instances.
 
 - **Any write action requires explicit user confirmation first.** Write actions
   include: `git pull` / fetch / checkout, `docker compose build|up|run` that

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Verify required runtime services are reachable before starting the app.
 # Required (fail -> container down): DB, Mongo, Elasticsearch, OpenObserve
-# (when enabled), FlareSolverr. Services are checked against the endpoints
-# configured via env, so external deployments work the same as local Docker.
+# (when enabled), and FlareSolverr when CRAWLERX_FLARESOLVERR_REQUIRED=true.
+# Services are checked against the endpoints configured via env, so external
+# deployments work the same as local Docker.
 set -uo pipefail
 
 RETRIES="${JVMETA_READY_RETRIES:-40}"
@@ -60,7 +61,9 @@ attempt() {
     check_tcp "openobserve" "${OPENOBSERVE_URL:-http://openobserve:5080}"
   fi
 
-  check_tcp "flaresolverr" "${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}"
+  if [[ "${CRAWLERX_FLARESOLVERR_REQUIRED:-true}" == "true" ]]; then
+    check_tcp "flaresolverr" "${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}"
+  fi
 }
 
 for ((i = 1; i <= RETRIES; i++)); do
