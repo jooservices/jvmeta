@@ -1,7 +1,7 @@
 # Internal deployment runbook
 
-Status: planned source-driven deployment. This runbook has not been used to
-complete a production cutover.
+Status: source-driven control deployment verified on 2026-10-02. Crawler-node
+rollout is pending.
 
 ## Deployment model
 
@@ -69,7 +69,8 @@ The target VM must have:
   sources required by the embedder build.
 - A private runtime `.env` file containing the external service configuration.
 
-The current Compose file bind-mounts these sibling package repositories:
+The current Compose file declares these sibling package bind mounts for local
+compatibility:
 
 ```text
 ../client
@@ -79,9 +80,9 @@ The current Compose file bind-mounts these sibling package repositories:
 ../laravel-repository
 ```
 
-They must exist beside the application checkout on the target VM. Pull or
-clone them from their GitHub repositories before starting the Laravel
-services; do not allow Compose to create empty replacement directories.
+The deployment dependency source is Packagist, fixed by `composer.lock`; the
+deployment scripts do not clone sibling package repositories. Keep this
+Compose compatibility detail separate from Composer dependency installation.
 
 ## Deployment scripts
 
@@ -119,6 +120,77 @@ have been verified.
 
 Python dependencies are installed during the Docker build, not on every
 container start.
+
+### Crawler deployment
+
+`deploy/crawler.sh` is the crawler-only flow. It:
+
+1. Clones or fast-forward pulls the configured Git branch and preserves the
+   existing `.env`.
+2. Requires `CRAWLERX_FLARESOLVERR_REQUIRED=true` and an `EMBEDDER_URL` that
+   points to the control embedder rather than the local `embedder` service.
+3. Builds the local PHP runtime, runs locked Composer installation, and runs
+   `php artisan optimize:clear`.
+4. Starts and verifies `flaresolverr` before starting the worker containers.
+5. Starts the requested number of workers, verifies the control embedder from
+   the worker network, and waits for them to remain running.
+
+The script does not run migrations and does not start `api`, `mcp`,
+`scheduler`, or `embedder`. Migrations are a control-side, once-per-release
+operation. It also fails when existing worker containers are still running;
+drain and stop them before an upgrade so an active crawl is not interrupted.
+
+Run it from the crawler checkout:
+
+```bash
+/home/joos/jvmeta/deploy/crawler.sh
+```
+
+The safe default is one worker. Override it only after reviewing queue load:
+
+```bash
+JVMETA_WORKER_INSTANCES=2 /home/joos/jvmeta/deploy/crawler.sh
+```
+
+### Elasticsearch mapping and reindex
+
+When the release changes the vector field names, update the mappings and then
+reindex existing data after the Laravel services are prepared. Run both
+commands from the application directory:
+
+```bash
+docker compose --env-file .env --file docker-compose.yml \
+  --profile app --profile control --profile embed \
+  run --rm --no-deps --entrypoint php api artisan es:setup
+
+docker compose --env-file .env --file docker-compose.yml \
+  --profile app --profile control --profile embed \
+  run --rm --no-deps --entrypoint php api artisan es:setup --reindex
+```
+
+The reindex is a write-heavy operation and may run for a long time. Do not
+start crawler workers during it.
+
+## Verified control deployment
+
+The control deployment was verified with the following result:
+
+- The existing checkout was upgraded with `git pull --ff-only`; no archive,
+  `scp`, image registry, or `gh` CLI was used.
+- `deploy/python.sh` built the local embedder image, started the embedder,
+  passed `/healthz`, and completed a real embedding warm-up.
+- `deploy/laravel.sh` built the local PHP image, ran locked Composer
+  installation, `php artisan migrate --force`, and `php artisan optimize:clear`,
+  then recreated `api` and `mcp`.
+- Elasticsearch mappings were updated and the full existing movie and
+  performer data was reindexed successfully.
+- A temporary scheduler smoke test ran `crawl:tick`, `crawl:dispatch`, and
+  metrics publishing without errors. The scheduler was then stopped again.
+- The final control state has only `api`, `mcp`, and `embedder` running.
+  `scheduler`, `worker`, and `flaresolverr` remain stopped until crawler nodes
+  are deployed.
+- API health returned HTTP 200 with database connectivity OK. A degraded
+  worker status is expected while no worker nodes are online.
 
 ### Script variables
 
@@ -216,12 +288,20 @@ Confirm:
 Only after the previous checks pass:
 
 ```bash
-docker compose --profile app --profile control --profile embed up -d scheduler
+docker compose --env-file .env --file docker-compose.yml \
+  --profile control up -d scheduler
 ```
 
 Verify the scheduler process is running, observe at least one scheduled loop,
-and confirm queue activity through the API/status checks. Do not manually run
-crawl commands as a deployment health check.
+and confirm queue activity through the API/status checks. After a smoke test
+when crawler workers are not yet deployed, stop it explicitly:
+
+```bash
+docker compose --env-file .env --file docker-compose.yml \
+  --profile control stop scheduler
+```
+
+Do not manually run crawl commands as a deployment health check.
 
 ## Failure handling
 
