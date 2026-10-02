@@ -38,6 +38,26 @@ are configured through the private `.env` file.
 Only one control VM runs `scheduler`; starting multiple schedulers duplicates
 scheduled work and alerts.
 
+## Worker runtime
+
+Each configured queue worker runs with a 180-second timeout by default. The
+database queue `retry_after` default is 240 seconds and must remain greater
+than the worker timeout so a running job is not reserved by another worker.
+
+The worker supervisor tracks each `(queue, slot)` process independently. A
+worker that exits, including normal `--max-time` or `--max-jobs` rotation, is
+restarted by itself with exponential backoff capped at 30 seconds. `SIGTERM`
+and `SIGINT` are forwarded to all children; the supervisor waits up to the
+stop grace period before killing remaining children and exits successfully.
+
+When a queued crawl row is missing or is no longer `claimed`, the job skips the
+fetch without changing the row and emits the `crawl_job_skipped` `ops` event.
+
+The relevant environment variables are `JVMETA_QUEUE_TIMEOUT` (default `180`),
+`DB_QUEUE_RETRY_AFTER` (default `240`), and `JVMETA_QUEUE_STOP_GRACE` (default
+`200`). `JVMETA_PHP_BIN` is available for shell-test replacement of the PHP
+binary and defaults to `php`.
+
 ## New instance versus upgrade
 
 The scripts support both deployment cases without renaming the application
