@@ -14,6 +14,9 @@ This flow does not transfer application images with `scp`, publish images to a
 registry, or store image archives in GitHub. Docker still creates local images
 from the repository Dockerfiles and may pull their pinned base images.
 
+Use the standard `git` CLI directly. The repository is public, so this flow
+does not require the `gh` CLI for cloning or updating the application.
+
 The existing `docker-compose.yml` remains the deployment Compose file for this
 internal flow. `Dockerfile.production`, `compose.production.yml`, and the
 production image workflow are preparation for a future immutable-image flow;
@@ -35,11 +38,30 @@ are configured through the private `.env` file.
 Only one control VM runs `scheduler`; starting multiple schedulers duplicates
 scheduled work and alerts.
 
+## New instance versus upgrade
+
+The scripts support both deployment cases without renaming the application
+directory:
+
+- **New instance:** when `JVMETA_APP_DIR` does not exist, the script runs
+  `git clone --branch ... --single-branch` into that path. Restore the private
+  `.env` through `JVMETA_ENV_SOURCE` before starting services.
+- **Existing instance upgrade:** when the checkout already exists, keep the
+  same directory and branch. The script requires a clean worktree and runs
+  `git pull --ff-only origin <branch>`. The existing `.env` stays in place
+  unless `JVMETA_ENV_SOURCE` is explicitly supplied to restore a verified
+  backup.
+
+Do not rename or delete `/home/joos/jvmeta` during a normal upgrade. Record the
+current Git SHA before pulling so an approved rollback can return to the
+previous revision.
+
 ## Preconditions
 
 The target VM must have:
 
-- Git with authenticated access to the private GitHub repository.
+- Git with network access to the public GitHub repository. No `gh` CLI is
+  required for this deployment flow.
 - Docker Engine enabled at boot.
 - Docker Compose v2.
 - The `joos` user allowed to run Docker.
@@ -110,7 +132,8 @@ export JVMETA_BRANCH=develop
 export JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp>
 ```
 
-`JVMETA_ENV_SOURCE` is required when cloning a new checkout. When the checkout
+`JVMETA_ENV_SOURCE` is required only when a new checkout has no `.env`, or when
+the operator intentionally restores a verified backup. When the checkout
 already contains `.env`, the scripts preserve it and only enforce mode `600`.
 
 ## Control-only cutover
@@ -141,34 +164,38 @@ remains available, but an active job may become retryable after the queue
 visibility timeout. Never use `down -v`, `docker volume prune`, or
 `docker system prune`.
 
-### 4. Preserve the old checkout
+### 4. Pull the requested GitHub revision
 
-Rename the old checkout instead of deleting it:
+Keep `/home/joos/jvmeta` in place. Before running the scripts, record the
+current revision and confirm the checkout is clean and on the requested branch:
 
-```text
-/home/joos/jvmeta
-→ /home/joos/jvmeta.previous.<timestamp>
+```bash
+git -C /home/joos/jvmeta rev-parse HEAD
+git -C /home/joos/jvmeta status --short
+git -C /home/joos/jvmeta branch --show-current
 ```
 
-Clone the requested GitHub branch into the original path. Keep the previous
-checkout and the `.env` backup until verification completes.
+The scripts then run `git pull --ff-only origin develop`. They stop if local
+changes exist or if the checkout is on another branch. Do not rename, delete,
+or replace the existing checkout for an upgrade.
 
 ### 5. Build and prepare dependencies
 
-Run the Python script first so the embedder is available:
+Run the Python script first so the embedder is available. For an existing
+checkout, no environment override is needed:
 
 ```bash
-JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp> \
-  /home/joos/jvmeta/deploy/python.sh
+/home/joos/jvmeta/deploy/python.sh
 ```
 
 Then run the Laravel script:
 
 ```bash
-JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp> \
-  /home/joos/jvmeta/deploy/laravel.sh
+/home/joos/jvmeta/deploy/laravel.sh
 ```
 
+For a new instance, or when restoring the verified backup, prefix both
+commands with `JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp>`.
 The scripts must be run as the deployment user, not by copying secrets into
 the repository.
 
@@ -205,7 +232,8 @@ external database restore is performed by these scripts.
 
 ## Rollback preparation
 
-Keep the previous checkout, the `.env` backup, and Docker's local image cache
-until verification is complete. A rollback restores the previous checkout and
-runtime environment, rebuilds the required local runtime, and starts the old
-Compose service set. Do not delete old volumes during rollback.
+Keep the recorded previous Git SHA, the `.env` backup, and Docker's local image
+cache until verification is complete. An approved rollback switches the
+existing checkout back to that known revision, rebuilds the required local
+runtime, and starts the previous Compose service set. Do not automatically
+reset the checkout, and do not delete old volumes during rollback.
