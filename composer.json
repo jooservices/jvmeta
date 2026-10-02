@@ -94,15 +94,18 @@
             "@php artisan config:clear --ansi",
             "XDEBUG_MODE=coverage APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=jvmeta php artisan test --coverage-clover=build/coverage.xml"
         ],
+        "test:shell": "bash tests/Shell/worker-queues.test.sh",
         "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 85",
         "check": [
             "@lint",
-            "@test"
+            "@test",
+            "@test:shell"
         ],
         "ci": [
             "@lint",
             "@test:coverage",
-            "@coverage:check"
+            "@coverage:check",
+            "@test:shell"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
