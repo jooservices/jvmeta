@@ -19,4 +19,6 @@ return [
 
     /** Workers per queue name on each instance (POC: 1). */
     'workers_per_queue' => (int) env('JVMETA_WORKERS_PER_QUEUE', 1),
+
+    'worker_timeout' => (int) env('JVMETA_QUEUE_TIMEOUT', 180),
 ];
