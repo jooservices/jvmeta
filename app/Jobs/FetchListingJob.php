@@ -67,7 +67,7 @@ final class FetchListingJob implements ShouldQueue
 
         $list = $result->list;
 
-        if ($list->entityType === 'movie') {
+        if (in_array($list->entityType, ['movie', 'gallery'], true)) {
             $enqueued = 0;
             foreach ($list->items as $item) {
                 $queue->enqueue($item->url, $row->source_slug, CrawlQueue::kindForNextCrawlType($item->nextCrawlType, $list->entityType));
@@ -78,7 +78,7 @@ final class FetchListingJob implements ShouldQueue
                 $queue->enqueue($list->pagination->nextUrl, $row->source_slug, CrawlQueue::KIND_LISTING);
             }
 
-            $this->recordEvent($row->source_slug, 'listing_parsed', $row->url, [
+            $this->recordEvent($row->source_slug, $list->entityType === 'gallery' ? 'gallery_listing_parsed' : 'listing_parsed', $row->url, [
                 'items' => count($list->items),
                 'enqueued' => $enqueued,
             ]);

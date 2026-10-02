@@ -13,6 +13,7 @@ use App\Models\Source;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
+use App\Models\PerformerMedia;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -151,6 +152,11 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'cup' => 'E',
             'blood_type' => 'A',
             'location' => 'Tokyo',
+        ]);
+        $this->assertDatabaseHas('performer_media', [
+            'kind' => PerformerMedia::KIND_IMAGE,
+            'url' => 'https://cdn.test/airi.jpg',
+            'source_slug' => 'javdatabase',
         ]);
         $this->assertDatabaseHas('performer_aliases', ['alias' => 'AiriS']);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);

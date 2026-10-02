@@ -6,7 +6,7 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 21 sources in `config/jvmeta_sources.php` — **movies and performers** (and eporner gallery) by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/jvmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
 - **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_performer`.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
@@ -17,7 +17,10 @@ Status: Beta — v0.1.0-beta
 |---|---|---|---|---|
 | `141jav` | listing+detail | cast from movie | — | movie |
 | `onepondo` | listing+detail | cast from movie | — | movie |
+| `aisex` | — | listing+detail | — | performer |
 | `avfan` | listing+detail | cast from movie | — | movie |
+| `avfan_profiles` | — | listing+detail | — | performer |
+| `avjoho` | — | listing+detail | — | performer |
 | `caribbeancom` | listing+detail | cast from movie | — | movie |
 | `duga` | listing+detail | cast from movie | — | movie |
 | `eporner` | — | thin rows from gallery names | Yes | `gallery_urls` |
@@ -30,11 +33,12 @@ Status: Beta — v0.1.0-beta
 | `javbus` | listing+detail | listing+detail | — | movie + performer |
 | `javdb` | listing+detail | cast from movie | — | movie |
 | `javlibrary` | listing+detail | listing+detail | — | movie + performer |
+| `javphotos` | — | — | listing+detail | gallery listing |
 | `minnanoav` | listing+detail* | listing+detail | — | performer only |
 | `missav` | listing+detail | cast from movie | — | movie |
 | `onejav` | listing+detail | cast from movie | — | movie |
 | `tokyohot` | listing+detail | cast from movie | — | movie |
-| `warashi` | — | listing+detail | — | performer only |
+| `warashi` | — | listing+detail | listing+detail | performer + gallery |
 | `xcity` | listing+detail | listing+detail | — | movie + performer |
 
 \* Minnano AV has movie capability in crawlerx; POC seeds performer index only.
@@ -111,6 +115,44 @@ MCP (stdio for AI clients) — set `JVMETA_MCP_API_KEY` to an **active** `jvm_�
 docker compose --profile mcp run --rm mcp
 # tools: lookup_movies, get_movie, search, lookup_performers, get_performer
 ```
+
+Movie and performer detail responses (`get_movie`, `get_performer`, and the
+corresponding detail API endpoints) expose the same photo contract:
+
+```json
+{
+  "photos": {
+    "images": [
+      {
+        "url": "https://cdn.example/image.jpg",
+        "thumbnail_url": "https://cdn.example/thumb.jpg",
+        "crawled_at": "2026-10-01T00:00:00+00:00",
+        "source": "javphotos"
+      }
+    ],
+    "galleries": [
+      {
+        "id": "gallery-123",
+        "title": "Example gallery",
+        "url": "https://example/gallery-123",
+        "source": "javphotos",
+        "crawled_at": "2026-10-01T00:00:00+00:00",
+        "images": [
+          {
+            "url": "https://cdn.example/image.jpg",
+            "thumbnail_url": "https://cdn.example/thumb.jpg",
+            "crawled_at": "2026-10-01T00:00:00+00:00",
+            "source": "javphotos"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`source` is the stable source slug. Only URL references are stored; image
+binary content is not downloaded into JVMeta.
 
 **MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
 

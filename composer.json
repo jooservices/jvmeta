@@ -13,7 +13,7 @@
     "require": {
         "php": "^8.5",
         "jooservices/client": "^4.0",
-        "jooservices/crawlerx": "^1.1",
+        "jooservices/crawlerx": "^1.2",
         "jooservices/dto": "^3.0",
         "jooservices/exceptions": "^4.0",
         "jooservices/laravel-controller": "^4.0",

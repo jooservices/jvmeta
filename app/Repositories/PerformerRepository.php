@@ -241,7 +241,7 @@ final class PerformerRepository extends EloquentRepository implements Repository
 
     public function findForDisplay(string|int $id): ?Performer
     {
-        $query = $this->newQuery()->with('aliases')->withCount('movies');
+        $query = $this->newQuery()->with(['aliases', 'media'])->withCount('movies');
         $performer = ctype_digit((string) $id)
             ? $query->find((int) $id)
             : $query->where('uuid', (string) $id)->first();

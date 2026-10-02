@@ -7,14 +7,20 @@ namespace Tests\Feature\Jobs;
 use App\Jobs\FetchListingJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieCode;
+use App\Models\MovieMedia;
 use App\Models\Source;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use App\Services\Persist\GalleryPersister;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use JOOservices\CrawlerX\Dto\CrawlItemResultDto;
 use JOOservices\CrawlerX\Dto\CrawlListResultDto;
 use JOOservices\CrawlerX\Dto\CrawlPaginationDto;
+use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
+use JOOservices\CrawlerX\Dto\Entity\PhotoDto;
 use Tests\Support\FakeCrawlerxClient;
 use Tests\TestCase;
 
@@ -80,6 +86,88 @@ final class FetchListingJobTest extends TestCase
 
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/actress/', 'kind' => CrawlQueue::KIND_PERFORMER_LISTING]);
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/ymds282', 'kind' => CrawlQueue::KIND_DETAIL]);
+    }
+
+    public function test_gallery_listing_enqueues_gallery_items_and_next_listing_page(): void
+    {
+        self::assertSame(CrawlQueue::KIND_GALLERY, CrawlQueue::kindForNextCrawlType(null, 'gallery'));
+
+        $source = $this->source('javphotos');
+        $row = $this->listingRow($source);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://jav.photos/free/',
+            page: 1,
+            entityType: 'gallery',
+            items: [
+                new CrawlItemResultDto(
+                    url: 'https://jav.photos/gallery/ssis-001/',
+                    entityType: 'gallery',
+                    meta: ['gallery' => ['metadata' => ['movie_code' => 'SSIS-001']]],
+                    nextCrawlType: 'gallery',
+                ),
+            ],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: 2, nextUrl: 'https://jav.photos/free/page/2/', hasNextPage: true),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'source_slug' => 'javphotos',
+            'url' => 'https://jav.photos/gallery/ssis-001/',
+            'kind' => CrawlQueue::KIND_GALLERY,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('crawl_queue', [
+            'source_slug' => 'javphotos',
+            'url' => 'https://jav.photos/free/page/2/',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'javphotos', 'kind' => 'gallery_listing_parsed']);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_gallery_persister_attaches_media_using_metadata_movie_code(): void
+    {
+        $movie = Movie::factory()->create([
+            'display_code' => 'SSIS-001',
+            'code_normalized' => 'SSIS001',
+        ]);
+        MovieCode::factory()->create([
+            'movie_id' => $movie->id,
+            'code' => 'SSIS-001',
+            'code_normalized' => 'SSIS001',
+            'kind' => MovieCode::KIND_DVD,
+            'source_slug' => 'javdb',
+        ]);
+
+        app(GalleryPersister::class)->persist(
+            'javphotos',
+            'https://jav.photos/gallery/unhelpful-title/',
+            new GalleryDto(
+                externalId: 'gallery-1',
+                title: 'No usable title code here',
+                performers: [],
+                photos: [
+                    new PhotoDto(
+                        id: '1',
+                        url: 'https://jav.photos/photo/1',
+                        imageUrl: 'https://jav.photos/full/1.jpg',
+                        thumbnailUrl: 'https://jav.photos/thumb/1.jpg',
+                        position: 1,
+                    ),
+                ],
+                metadata: ['movie_code' => 'ssis-1'],
+            ),
+        );
+
+        $this->assertDatabaseHas('movie_media', [
+            'movie_id' => $movie->id,
+            'kind' => MovieMedia::KIND_GALLERY,
+            'url' => 'https://jav.photos/full/1.jpg',
+            'source_slug' => 'javphotos',
+        ]);
     }
 
     public function test_blocked_failure_records_blocked_event_and_fails_row(): void

@@ -7,6 +7,7 @@ namespace App\Services\Persist;
 use App\Data\Crawl\PerformerDraft;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
+use App\Models\PerformerMedia;
 use App\Models\PerformerSource;
 use App\Services\Archive\MongoSiteArchive;
 use App\Services\Crawl\PerformerDraftSink;
@@ -80,17 +81,8 @@ final class PerformerPersister implements PerformerDraftSink
                 $attributes,
             );
 
-            foreach ($draft->aliases as $alias) {
-                $trimmed = trim($alias);
-                if ($trimmed === '') {
-                    continue;
-                }
-
-                PerformerAlias::query()->firstOrCreate(
-                    ['performer_id' => (int) $performer->id, 'alias' => $trimmed],
-                    ['kind' => 'source'],
-                );
-            }
+            $this->upsertAliases($performer, $draft);
+            $this->upsertProfileImage($performer, $draft, $crawledAt);
 
             return $performer->refresh();
         });
@@ -163,6 +155,45 @@ final class PerformerPersister implements PerformerDraftSink
         }
 
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    private function upsertProfileImage(
+        Performer $performer,
+        PerformerDraft $draft,
+        CarbonImmutable $crawledAt,
+    ): void {
+        $imageUrl = $this->nullableTrim($draft->imageUrl);
+        if ($imageUrl === null) {
+            return;
+        }
+
+        PerformerMedia::query()->updateOrCreate(
+            [
+                'performer_id' => (int) $performer->id,
+                'kind' => PerformerMedia::KIND_IMAGE,
+                'url' => $imageUrl,
+            ],
+            [
+                'meta' => null,
+                'source_slug' => $draft->sourceSlug,
+                'crawled_at' => $crawledAt,
+            ],
+        );
+    }
+
+    private function upsertAliases(Performer $performer, PerformerDraft $draft): void
+    {
+        foreach ($draft->aliases as $alias) {
+            $trimmed = trim($alias);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            PerformerAlias::query()->firstOrCreate(
+                ['performer_id' => (int) $performer->id, 'alias' => $trimmed],
+                ['kind' => 'source'],
+            );
+        }
     }
 
     /**

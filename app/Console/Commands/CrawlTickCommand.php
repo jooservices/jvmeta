@@ -116,6 +116,10 @@ final class CrawlTickCommand extends Command
             $seeds[] = [CrawlQueue::KIND_PERFORMER_LISTING, $url];
         }
 
+        foreach ($this->configUrlList($sourceSlug, 'gallery_listing_urls') as $url) {
+            $seeds[] = [CrawlQueue::KIND_LISTING, $url];
+        }
+
         foreach ($this->configUrlList($sourceSlug, 'gallery_urls') as $url) {
             $seeds[] = [CrawlQueue::KIND_GALLERY, $url];
         }
