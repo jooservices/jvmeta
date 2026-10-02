@@ -79,6 +79,8 @@ services:
 
   embedder:
     image: ${JVMETA_EMBEDDER_IMAGE:?JVMETA_EMBEDDER_IMAGE must be set}
+    ports:
+      - "${JVMETA_EMBEDDER_BIND:-127.0.0.1:8000}:8000"
     environment:
       HF_HOME: /home/embedder/.cache/huggingface
     user: "10001:10001"

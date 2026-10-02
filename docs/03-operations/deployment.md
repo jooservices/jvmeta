@@ -81,6 +81,11 @@ containers require FlareSolverr, while control-plane containers set
 `CRAWLERX_FLARESOLVERR_REQUIRED=false` because they do not run the crawler
 sidecar.
 
+The control Compose profile publishes the embedder through
+`JVMETA_EMBEDDER_BIND`. Keep it on loopback for control-only operation. Before
+external crawler nodes use this embedder, bind it to the control host's
+private/LAN address and restrict access with the host or network firewall.
+
 ## Deployment sequence
 
 ### 1. Build and publish the release images
@@ -128,21 +133,17 @@ profile or enable bundled data services accidentally.
 Stop only the control-plane scheduler. Keep the API and MCP services available
 until the control deployment begins.
 
-This prevents new scheduled crawl work from being created while allowing the
-existing worker fleet to finish its current work.
+This prevents new scheduled crawl work from being created before the old
+control stack is replaced.
 
-### 4. Wait for all workers to finish
+### 4. Cut over the current control VM
 
-Keep the crawler workers running and wait until all currently active work has
-completed:
-
-- No active or claimed work remains.
-- Workers report idle.
-- Queue state is stable.
-
-There is no drain timeout in this procedure. Do not force-kill or restart a
-worker that still has active work. If the fleet is not idle, pause the
-deployment at this step.
+For the current control-only cutover, do not wait for the worker that is
+incorrectly running on the old control Compose stack. Stop the scheduler first,
+then bring down the old stack without removing volumes. The queue is external,
+so queued work remains available, but any active worker job may be interrupted
+and become retryable after the queue visibility timeout. Verify queue
+processing after the new control stack starts.
 
 ### 5. Deploy the control plane
 
@@ -151,8 +152,10 @@ On the control instance:
 1. Pull the recorded `jvmeta` and `jvmeta-embedder` image digests.
 2. If the release contains a migration, run `php artisan migrate --force`
    exactly once from the release image.
-3. Recreate only `api`, `mcp`, and `embedder` with the new image digests.
+3. Start only `api`, `mcp`, and `embedder` with the new image digests; keep
+   `scheduler` stopped until verification passes.
 4. Verify the API, MCP, embedder, logs, and dependency connectivity.
+5. Start `scheduler` and verify that its scheduled loop is running.
 
 The image-based flow does not run these commands on the production host:
 
@@ -185,8 +188,10 @@ Laravel HTTP API.
 
 ### 7. Start the scheduler
 
-After the control plane and every crawler instance pass verification, start
-the single scheduler and observe the normal queue flow.
+For a control-only deployment, start the scheduler after the control services
+pass verification as described in step 5. If crawler rollout is part of the
+same release, wait until every crawler instance passes verification before
+starting the single scheduler.
 
 Do not manually run crawl commands as a deployment health check. The scheduler
 should resume normal operation through its configured schedule.
