@@ -1,0 +1,89 @@
+# Real backing services (Postgres, Mongo, Elasticsearch, OpenObserve) for the Integration suite (same images as docker-compose.yml).
+# Data lives in tmpfs: every run starts empty. Run through docker/ci/integration.
+name: jvmeta-integration
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: jvmeta_it
+      POSTGRES_USER: jvmeta
+      POSTGRES_PASSWORD: jvmeta
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jvmeta -d jvmeta_it"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongo:
+    image: mongo:7
+    tmpfs:
+      - /data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    tmpfs:
+      - /usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+
+  openobserve:
+    image: openobserve/openobserve:v0.92.0
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+      ZO_TELEMETRY: "false"
+      ZO_ROOT_USER_EMAIL: root@jvmeta.test
+      ZO_ROOT_USER_PASSWORD: Integration#123
+    tmpfs:
+      - /data
+    # Distroless image (no shell): the tests wait for /healthz instead.
+
+  gate:
+    image: ${JVMETA_CI_IMAGE:-jvmeta-ci:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "${JVMETA_CI_UID:-1000}:${JVMETA_CI_GID:-1000}"
+    working_dir: /app
+    volumes:
+      - ../..:/app
+      - jvmeta-ci-composer-cache:/tmp/composer-cache
+    environment:
+      HOME: /tmp
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      MONGO_HOST: mongo
+      MONGO_PORT: "27017"
+      ELASTICSEARCH_HOST: http://elasticsearch:9200
+      OPENOBSERVE_URL: http://openobserve:5080
+      OPENOBSERVE_EMAIL: root@jvmeta.test
+      OPENOBSERVE_PASSWORD: Integration#123
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      openobserve:
+        condition: service_started
+
+volumes:
+  jvmeta-ci-composer-cache:
+    external: true

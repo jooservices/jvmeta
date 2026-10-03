@@ -27,7 +27,7 @@ CONTROL_NODE_SERVICES = $(API_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
 NODE_SERVICES = $(CONTROL_NODE_SERVICES) $(CRAWLER_SERVICES)
 LOCAL_SERVICES = $(API_SERVICES) $(WORKER_SERVICES) $(DATA_SERVICES) $(OBS_SERVICES) $(FLARE_SERVICES) $(CONTROL_SERVICES) $(EMBED_SERVICES)
 
-.PHONY: build crawl down install lint migrate scheduler setup shell test up validate
+.PHONY: build crawl down install lint migrate scheduler setup shell test test-integration up validate
 
 build:
 	$(DOCKER_COMPOSE) build
@@ -46,6 +46,9 @@ lint:
 
 test:
 	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer test
+
+test-integration:
+	docker/ci/integration
 
 migrate:
 	@case "$(MODE)" in \
