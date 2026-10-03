@@ -9,7 +9,7 @@ image is pushed. Deploy stays manual (`deploy/*.sh`).
 |---|---|---|
 | `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 85%), coverage artifact · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
 | `embedder-image.yml` | changes under `embedder/` | build `embedder/Dockerfile.production`, no push |
-| `workflow-audit.yml` | changes under `.github/`, weekly | actionlint, zizmor (SARIF to code scanning) |
+| `workflow-audit.yml` | changes under `.github/`, weekly | actionlint (pinned image), zizmor (action uploads SARIF to code scanning) |
 | `commitlint.yml` | pull requests | Conventional Commits, sentence-case subject (same rule as `captainhook.json`) |
 
 All actions are pinned by commit SHA.
