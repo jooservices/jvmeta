@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.jable.tv/models/",
+  "final_url": "https://en.jable.tv/models/",
+  "captured_at": "2026-09-29T23:40:00.000Z",
+  "http_status": 200,
+  "content_hash": "f265921e0ba687ebc74df1088f5d2798c2b0511ee013d7814231be782d810483",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

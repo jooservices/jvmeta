@@ -38,3 +38,21 @@ docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:latest --offl
 
 Tests use sqlite in-memory and an array cache (`phpunit.xml`), so no Postgres,
 Redis or Mongo service is needed.
+
+## Test layers
+
+| Layer | Where | What it proves |
+|---|---|---|
+| Unit / Feature | `tests/Unit`, `tests/Feature` | jvmeta logic on sqlite in-memory; crawlerx replaced by `FakeCrawlerxClient` |
+| crawlerx contract | `tests/Feature/Contract` | the **real** crawlerx stack parses every live-captured fixture (`tests/Fixtures/crawlerx`) and the jvmeta jobs store the result; generated failures (404, 410, 429, 5xx, network, empty, Cloudflare challenge, drifted page) end in the expected row state. Only the HTTP transport is faked (`ClientBuilder::fake()`) |
+
+The failure expectations pin the crawlerx 1.2 contract (every fetch failure
+is `blocked` or `challenge`, no retry). They change on purpose when jvmeta
+moves to crawlerx 1.3.
+
+After upgrading crawlerx, refresh the fixtures and rerun the suite:
+
+```bash
+docker/ci/run php tools/sync-crawlerx-fixtures.php
+docker/ci/run composer test
+```
