@@ -35,7 +35,7 @@ jobs:
         id: vendor-cache
         with:
           path: vendor
-          key: composer-vendor-${{ hashFiles('composer.lock', 'docker/ci/Dockerfile') }}
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
 
       - name: Install dependencies
         if: steps.vendor-cache.outputs.cache-hit != 'true'
