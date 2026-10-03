@@ -4,6 +4,12 @@ title = "gitleaks"
 useDefault = true
 
 [[allowlists]]
+description = "Live-captured public page fixtures synced from jooservices/crawlerx"
+paths = [
+  '''^tests/Fixtures/crawlerx/''',
+]
+
+[[allowlists]]
 description = "Allowlisted files"
 paths = [
   '''(.*?)(png|jpg|gif|svg)$''',
