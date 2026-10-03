@@ -7,7 +7,7 @@ image is pushed. Deploy stays manual (`deploy/*.sh`).
 
 | Workflow | Trigger | Jobs |
 |---|---|---|
-| `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 85%), coverage artifact · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
+| `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 85%), coverage artifact · **Integration**: `docker/ci/integration` against real Postgres, Mongo, Elasticsearch and OpenObserve · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
 | `embedder-image.yml` | changes under `embedder/` | build `embedder/Dockerfile.production`, no push |
 | `workflow-audit.yml` | changes under `.github/`, weekly | actionlint (pinned image), zizmor (action uploads SARIF to code scanning) |
 | `commitlint.yml` | pull requests | Conventional Commits, sentence-case subject (same rule as `captainhook.json`) |
@@ -45,6 +45,7 @@ Redis or Mongo service is needed.
 |---|---|---|
 | Unit / Feature | `tests/Unit`, `tests/Feature` | jvmeta logic on sqlite in-memory; crawlerx replaced by `FakeCrawlerxClient` |
 | crawlerx contract | `tests/Feature/Contract` | the **real** crawlerx stack parses every live-captured fixture (`tests/Fixtures/crawlerx`) and the jvmeta jobs store the result; generated failures (404, 410, 429, 5xx, network, empty, Cloudflare challenge, drifted page) end in the expected row state. Only the HTTP transport is faked (`ClientBuilder::fake()`) |
+| Integration | `tests/Integration` (`phpunit.integration.xml`) | real **Postgres** (all migrations apply, roll back, re-apply), **Mongo** archive, **Elasticsearch** documents and **OpenObserve** ingestion. Every movie and performer fixture goes through crawlerx → job → Postgres (`movies`/`movie_sources`, `performers`/`performer_sources` with the Mongo id) → Mongo → ES; a recrawl does not duplicate the movie, source link, archive or ES document (observations stay append-only by design); a crawl's `crawl_fetch` record is queryable in OpenObserve. Only the embedder is faked |
 
 The failure expectations pin the crawlerx 1.2 contract (every fetch failure
 is `blocked` or `challenge`, no retry). They change on purpose when jvmeta
@@ -55,4 +56,12 @@ After upgrading crawlerx, refresh the fixtures and rerun the suite:
 ```bash
 docker/ci/run php tools/sync-crawlerx-fixtures.php
 docker/ci/run composer test
+```
+
+Run the integration suite (starts the services in Docker, tmpfs storage,
+removes them afterwards):
+
+```bash
+docker/ci/integration                      # or: make test-integration
+docker/ci/integration --filter Performer   # extra PHPUnit arguments
 ```

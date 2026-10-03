@@ -204,6 +204,7 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 | `make crawl ACTION=source SITE=onejav` | Tick and dispatch one site |
 | `make scheduler` | One-off scheduler |
 | `make test` | PHPUnit tests |
+| `make test-integration` | Integration suite against real Postgres, Mongo, Elasticsearch and OpenObserve (Docker) |
 | `make lint` | Full Composer quality gate |
 
 ## CI
