@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Run the Integration suite against real Postgres, Mongo, Elasticsearch and OpenObserve.
+#   docker/ci/integration                 # whole suite
+#   docker/ci/integration --filter Movie  # extra PHPUnit arguments
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+compose=(docker compose --file "${root}/docker/ci/compose.integration.yml")
+
+export JVMETA_CI_UID="$(id -u)" JVMETA_CI_GID="$(id -g)"
+docker volume create jvmeta-ci-composer-cache >/dev/null
+
+cleanup() { "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+if [[ "${JVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
+  "${compose[@]}" build --quiet gate
+fi
+"${compose[@]}" up --detach --wait postgres mongo elasticsearch
+"${compose[@]}" up --detach openobserve
+"${compose[@]}" run --rm gate vendor/bin/phpunit --configuration phpunit.integration.xml "$@"

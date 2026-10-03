@@ -71,6 +71,37 @@ jobs:
           path: build/coverage.xml
           retention-days: 7
 
+  integration:
+    name: Integration (Postgres, Mongo, Elasticsearch, OpenObserve)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Build CI image
+        run: docker build --tag jvmeta-ci:local --file docker/ci/Dockerfile docker/ci
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        id: vendor-cache
+        with:
+          path: vendor
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
+
+      - name: Install dependencies
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        env:
+          JVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run integration suite
+        env:
+          JVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/integration
+
   secrets:
     name: Secrets scan
     runs-on: ubuntu-latest
