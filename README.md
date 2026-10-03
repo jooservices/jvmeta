@@ -1,5 +1,7 @@
 # jvmeta
 
+[![CI](https://github.com/jooservices/jvmeta/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/jooservices/jvmeta/actions/workflows/ci.yml)
+
 Laravel app: crawl JAV metadata (crawlerx) → Mongo archive → Postgres SoR → Elasticsearch search → API + MCP.
 
 Status: Beta — v0.1.0-beta
@@ -203,6 +205,12 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 | `make scheduler` | One-off scheduler |
 | `make test` | PHPUnit tests |
 | `make lint` | Full Composer quality gate |
+
+## CI
+
+GitHub Actions (GitHub-hosted runners) run on every push and pull request to
+`develop`. No deploy, no image push. Details and local reproduction:
+[`docs/03-operations/ci.md`](docs/03-operations/ci.md).
 
 ## Project docs
 
