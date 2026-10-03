@@ -24,6 +24,8 @@
         </exclude>
     </source>
     <php>
+        <!-- The suite parses large live-captured pages; 128M (PHP default) is too tight with Xdebug loaded. -->
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" force="true"/>
         <env name="APP_NAME" value="jvmeta" force="true"/>
