@@ -10,7 +10,6 @@ use App\Models\Movie;
 use App\Models\MovieObservation;
 use App\Models\Performer;
 use App\Models\PerformerSource;
-use JOOservices\Client\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
@@ -25,16 +24,7 @@ final class CrawlerxFixtureContractTest extends CrawlerxContractTestCase
     /** @return array<string, array{string, string, string, string}> */
     public static function fixtures(): array
     {
-        $cases = [];
-        foreach (glob(self::FIXTURE_DIR . '/*/*.meta.json') ?: [] as $metaPath) {
-            /** @var array{source_url: string, target_type: string} $meta */
-            $meta = json_decode((string) file_get_contents($metaPath), true, flags: JSON_THROW_ON_ERROR);
-            $slug = basename(dirname($metaPath));
-            $bodyPath = substr($metaPath, 0, -strlen('.meta.json'));
-            $cases[$slug . '/' . basename($bodyPath)] = [$slug, $meta['target_type'], $meta['source_url'], $bodyPath];
-        }
-
-        return $cases;
+        return self::crawlerxFixtures();
     }
 
     #[DataProvider('fixtures')]
@@ -42,7 +32,7 @@ final class CrawlerxFixtureContractTest extends CrawlerxContractTestCase
     {
         $this->source($slug);
         $row = $this->claimedRow($slug, $url, $kind);
-        $this->respondWith($url, TestResponse::make(200, ['Content-Type' => 'text/html; charset=utf-8'], (string) file_get_contents($bodyPath)));
+        $this->respondWithFixture($url, $bodyPath);
 
         $this->dispatchFor($row);
 
