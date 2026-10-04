@@ -65,7 +65,10 @@ final class ObservabilityEmitter
         ]);
     }
 
-    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null): void
+    /**
+     * @param  list<array<string, mixed>>  $attempts  crawlerx fetch attempts (method, elapsed_ms, status, challenge, ok)
+     */
+    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null, array $attempts = []): void
     {
         $this->emit([
             'event' => 'crawl_fetch',
@@ -74,6 +77,14 @@ final class ObservabilityEmitter
             'ok' => $ok,
             'duration_ms' => $durationMs,
             'error_code' => $errorCode,
+            'attempt_count' => count($attempts),
+            'attempts' => array_map(static fn(array $attempt): array => [
+                'method' => is_string($attempt['method'] ?? null) ? $attempt['method'] : null,
+                'elapsed_ms' => is_int($attempt['elapsed_ms'] ?? null) ? $attempt['elapsed_ms'] : null,
+                'status' => is_int($attempt['status'] ?? null) ? $attempt['status'] : null,
+                'challenge' => (bool) ($attempt['challenge'] ?? false),
+                'ok' => (bool) ($attempt['ok'] ?? false),
+            ], $attempts),
         ]);
     }
 

@@ -93,6 +93,7 @@ class CrawlerxClient
             $result->ok,
             $durationMs,
             $result->errorCode,
+            $result->attempts,
         );
 
         return $result;
