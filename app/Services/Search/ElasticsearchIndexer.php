@@ -20,7 +20,7 @@ final class ElasticsearchIndexer
 {
     public function __construct(private readonly EmbedderClient $embedder) {}
 
-    public function indexMovie(Movie $movie): void
+    public function indexMovie(Movie $movie, bool $requireVector = false): bool
     {
         $movie->loadMissing(['genres', 'performers']);
 
@@ -60,12 +60,14 @@ final class ElasticsearchIndexer
         $vector = $this->embedder->embedOne($embedText);
         if ($vector !== null) {
             $document['embedding_movie'] = $vector;
+        } elseif ($requireVector) {
+            return false;
         }
 
-        $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, $document);
+        return $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, $document);
     }
 
-    public function indexPerformer(Performer $performer): void
+    public function indexPerformer(Performer $performer, bool $requireVector = false): bool
     {
         $performer->loadMissing('aliases');
 
@@ -100,9 +102,11 @@ final class ElasticsearchIndexer
         $vector = $this->embedder->embedOne($embedText);
         if ($vector !== null) {
             $document['embedding_performer'] = $vector;
+        } elseif ($requireVector) {
+            return false;
         }
 
-        $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
+        return $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
     }
 
     /**
@@ -224,7 +228,7 @@ final class ElasticsearchIndexer
     }
 
     /** @param array<string, mixed> $body */
-    private function put(string $index, string $id, array $body): void
+    private function put(string $index, string $id, array $body): bool
     {
         $host = rtrim((string) config('elasticsearch.host'), '/');
         $started = hrtime(true);
@@ -237,6 +241,8 @@ final class ElasticsearchIndexer
                 $response->successful(),
                 (int) round((hrtime(true) - $started) / 1_000_000),
             );
+
+            return $response->successful();
         } catch (Throwable) {
             app(ObservabilityEmitter::class)->emitDependency(
                 'elasticsearch',
@@ -244,6 +250,8 @@ final class ElasticsearchIndexer
                 false,
                 (int) round((hrtime(true) - $started) / 1_000_000),
             );
+
+            return false;
         }
     }
 

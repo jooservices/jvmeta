@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Search;
 
+use App\Models\Movie;
 use App\Models\Performer;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -14,6 +15,88 @@ use Tests\TestCase;
 final class ElasticsearchIndexerTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_movie_indexing_skips_elasticsearch_put_when_vector_is_required_but_unavailable(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+
+        Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
+            ? Http::response([], 503)
+            : Http::response(['result' => 'created']));
+
+        $this->assertFalse(app(ElasticsearchIndexer::class)->indexMovie($movie, requireVector: true));
+
+        Http::assertSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
+        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/jvmeta_movies/_doc/'));
+    }
+
+    public function test_movie_indexing_remains_fail_open_when_vector_is_unavailable(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+
+        Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
+            ? Http::response([], 503)
+            : Http::response(['result' => 'created']));
+
+        $this->assertTrue(app(ElasticsearchIndexer::class)->indexMovie($movie));
+
+        Http::assertSent(static function (ClientRequest $request) use ($movie): bool {
+            if (! str_ends_with($request->url(), '/jvmeta_movies/_doc/' . $movie->uuid)) {
+                return false;
+            }
+
+            return ! array_key_exists('embedding_movie', $request->data());
+        });
+    }
+
+    public function test_movie_indexing_returns_false_when_elasticsearch_put_fails(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+
+        Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
+            ? Http::response(['data' => [['embedding' => array_fill(0, 384, 0.1)]]])
+            : Http::response([], 503));
+
+        $this->assertFalse(app(ElasticsearchIndexer::class)->indexMovie($movie));
+
+        Http::assertSent(static function (ClientRequest $request) use ($movie): bool {
+            return str_ends_with($request->url(), '/jvmeta_movies/_doc/' . $movie->uuid)
+                && array_key_exists('embedding_movie', $request->data());
+        });
+    }
+
+    public function test_performer_indexing_skips_elasticsearch_put_when_vector_is_required_but_unavailable(): void
+    {
+        $performer = Performer::factory()->create(['name_romaji' => fake()->name()]);
+
+        Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
+            ? Http::response([], 503)
+            : Http::response(['result' => 'created']));
+
+        $this->assertFalse(app(ElasticsearchIndexer::class)->indexPerformer($performer, requireVector: true));
+
+        Http::assertSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
+        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/jvmeta_performers/_doc/'));
+    }
+
+    public function test_performer_indexing_remains_fail_open_when_vector_is_unavailable(): void
+    {
+        $performer = Performer::factory()->create(['name_romaji' => fake()->name()]);
+
+        Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
+            ? Http::response([], 503)
+            : Http::response(['result' => 'created']));
+
+        $this->assertTrue(app(ElasticsearchIndexer::class)->indexPerformer($performer));
+
+        Http::assertSent(static function (ClientRequest $request) use ($performer): bool {
+            if (! str_ends_with($request->url(), '/jvmeta_performers/_doc/' . $performer->uuid)) {
+                return false;
+            }
+
+            return ! array_key_exists('embedding_performer', $request->data());
+        });
+    }
 
     public function test_index_performer_embeds_rich_profile_and_uses_performer_field(): void
     {

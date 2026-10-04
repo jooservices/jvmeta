@@ -8,6 +8,7 @@ use App\Models\CrawlQueue;
 use App\Models\Movie;
 use App\Models\MovieObservation;
 use App\Models\MovieSource;
+use Illuminate\Support\Facades\Http;
 use MongoDB\BSON\ObjectId;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -63,6 +64,28 @@ final class MoviePipelineTest extends IntegrationTestCase
         self::assertSame(2 * $observations, MovieObservation::query()->count());
         self::assertSame(1, $this->mongoCollection($slug)->countDocuments());
         self::assertSame(1, $this->esCount((string) config('elasticsearch.movies_index')));
+    }
+
+    public function test_backfill_command_adds_a_missing_movie_vector_to_elasticsearch(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+        $index = (string) config('elasticsearch.movies_index');
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+        $response = Http::acceptJson()->timeout(10)->put("{$host}/{$index}/_doc/{$movie->uuid}", [
+            'uuid' => $movie->uuid,
+            'title_en' => $movie->title_en,
+        ]);
+        self::assertTrue($response->successful(), 'Initial vector-less Elasticsearch document was not created');
+        self::assertTrue(Http::acceptJson()->timeout(10)->get("{$host}/{$index}/_refresh")->successful());
+
+        $this->artisan('search:backfill-embeddings', ['--entity' => 'movies'])
+            ->assertSuccessful()
+            ->expectsOutputToContain('Found: 1')
+            ->expectsOutputToContain('Re-indexed: 1');
+
+        $document = $this->esDocument($index, (string) $movie->uuid);
+        self::assertNotNull($document, 'Backfilled Elasticsearch movie document missing');
+        self::assertCount(self::EMBED_DIM, $document['embedding_movie'] ?? []);
     }
 
     private function crawl(string $slug, string $kind, string $url, string $bodyPath): CrawlQueue
