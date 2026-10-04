@@ -4,14 +4,26 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Observability;
 
+use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\Source;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-final class PublishObservabilityMetricsCommandTest extends TestCase
+final class PublishMetricsCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_metrics_command_is_registered_with_legacy_alias(): void
+    {
+        $commands = app(Kernel::class)->all();
+        $command = $commands['obs:publish-metrics'];
+
+        $this->assertInstanceOf(PublishMetricsCommand::class, $command);
+        $this->assertArrayHasKey('jvmeta:obs-publish-metrics', $commands);
+        $this->assertSame($command, $commands['jvmeta:obs-publish-metrics']);
+    }
 
     public function test_command_publishes_gauge_points_when_enabled(): void
     {
@@ -35,7 +47,7 @@ final class PublishObservabilityMetricsCommandTest extends TestCase
             'openobserve.test/*' => Http::response(['code' => 200], 200),
         ]);
 
-        $this->artisan('jvmeta:obs-publish-metrics')->assertSuccessful();
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
 
         Http::assertSent(function ($request): bool {
             return str_contains($request->url(), '/v1/metrics')
@@ -48,7 +60,7 @@ final class PublishObservabilityMetricsCommandTest extends TestCase
         config()->set('openobserve.enabled', false);
         Http::fake();
 
-        $this->artisan('jvmeta:obs-publish-metrics')->assertSuccessful();
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
         Http::assertNothingSent();
     }
 }

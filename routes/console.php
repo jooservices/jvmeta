@@ -11,8 +11,10 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 if (! app()->runningUnitTests()) {
-    Schedule::command('crawl:tick')->everyMinute();
-    Schedule::command('crawl:dispatch')->everyMinute();
-    Schedule::command('jvmeta:obs-publish-metrics')->everyMinute();
-    Schedule::command('jvmeta:watchdog')->everyFiveMinutes();
+    Schedule::command('crawler:sync-sources')->everyFifteenMinutes();
+    Schedule::command('crawler:reclaim')->everyMinute();
+    Schedule::command('crawler:seed')->everyMinute();
+    Schedule::command('crawler:feed-pool')->everyMinute()->withoutOverlapping();
+    Schedule::command('obs:publish-metrics')->everyMinute();
+    Schedule::command('crawler:watchdog')->everyFiveMinutes();
 }

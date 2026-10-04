@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Observability;
 
 use App\Models\ApiUsageLog;
 use App\Models\CrawlEvent;
@@ -19,9 +19,11 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
-final class PublishObservabilityMetricsCommand extends Command
+final class PublishMetricsCommand extends Command
 {
-    protected $signature = 'jvmeta:obs-publish-metrics';
+    protected $signature = 'obs:publish-metrics';
+
+    protected $aliases = ['jvmeta:obs-publish-metrics'];
 
     protected $description = 'Publish jvmeta ops and quality aggregate metrics to OpenObserve.';
 

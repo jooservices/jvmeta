@@ -2,14 +2,16 @@
 
 declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Crawler;
 
 use Illuminate\Console\Command;
 
 /** Enqueue listing seeds for one site (or all) then optionally dispatch. */
-final class CrawlSourceCommand extends Command
+final class RunSourceCommand extends Command
 {
-    protected $signature = 'crawl:source {slug?} {--dispatch : Also run crawl:dispatch after tick} {--limit=20}';
+    protected $signature = 'crawler:run-source {slug?} {--dispatch : Also run crawler:feed-pool after seed} {--limit=20}';
+
+    protected $aliases = ['crawl:source'];
 
     protected $description = 'Enqueue crawl listings for one source slug (or all when omitted).';
 
@@ -23,13 +25,23 @@ final class CrawlSourceCommand extends Command
             $params['--source'] = $slug;
         }
 
-        $code = $this->call('crawl:tick', $params);
+        $code = $this->call('crawler:sync-sources');
+        if ($code !== self::SUCCESS) {
+            return $code;
+        }
+
+        $code = $this->call('crawler:reclaim');
+        if ($code !== self::SUCCESS) {
+            return $code;
+        }
+
+        $code = $this->call('crawler:seed', $params);
         if ($code !== self::SUCCESS) {
             return $code;
         }
 
         if ($this->option('dispatch')) {
-            return $this->call('crawl:dispatch', ['--limit' => $limit]);
+            return $this->call('crawler:feed-pool', ['--limit' => $limit]);
         }
 
         return self::SUCCESS;

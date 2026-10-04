@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Crawler;
 
 use App\Jobs\FetchDetailJob;
 use App\Jobs\FetchGalleryJob;
@@ -18,9 +18,11 @@ use Illuminate\Console\Command;
 /**
  * Claims pending crawl_queue rows and dispatches Laravel jobs (buffer → worker pool).
  */
-final class CrawlDispatchCommand extends Command
+final class FeedPoolCommand extends Command
 {
-    protected $signature = 'crawl:dispatch {--limit=50}';
+    protected $signature = 'crawler:feed-pool {--limit=50}';
+
+    protected $aliases = ['crawl:dispatch'];
 
     protected $description = 'Claim pending crawl_queue rows and dispatch FetchListing/FetchDetail/Performer/Gallery jobs.';
 

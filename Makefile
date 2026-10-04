@@ -114,17 +114,19 @@ scheduler:
 crawl:
 	@case "$(ACTION)" in \
 		tick) \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:sync-sources && \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:reclaim && \
 			if [ -n "$(SITE)" ]; then \
-				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:tick --source=$(SITE) --limit=$(or $(LIMIT),50); \
+				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:seed --source=$(SITE) --limit=$(or $(LIMIT),50); \
 			else \
-				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:tick --limit=$(or $(LIMIT),50); \
+				$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:seed --limit=$(or $(LIMIT),50); \
 			fi; \
 			;; \
 		dispatch) \
-			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:dispatch --limit=$(or $(LIMIT),50); \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:feed-pool --limit=$(or $(LIMIT),50); \
 			;; \
 		source) \
-			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawl:source $(SITE) --dispatch --limit=$(or $(LIMIT),20); \
+			$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) php artisan crawler:run-source $(SITE) --dispatch --limit=$(or $(LIMIT),20); \
 			;; \
 		*) \
 			echo "Unsupported ACTION='$(ACTION)'. Use ACTION=tick, dispatch, or source."; \

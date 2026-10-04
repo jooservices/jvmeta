@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Crawler;
 
 use App\Events\CrawlSourceUnhealthy;
 use App\Events\WorkerHeartbeatStale;
@@ -11,9 +11,11 @@ use App\Services\Crawl\WorkerHeartbeat;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
 
-final class WorkerWatchdogCommand extends Command
+final class WatchdogCommand extends Command
 {
-    protected $signature = 'jvmeta:watchdog';
+    protected $signature = 'crawler:watchdog';
+
+    protected $aliases = ['jvmeta:watchdog'];
 
     protected $description = 'Check worker heartbeat and long-stale sources; alert via Telegram + activity log.';
 
