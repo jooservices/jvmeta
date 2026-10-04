@@ -12,7 +12,9 @@ use App\Services\Dependencies\Probes\MongoProbe;
 use App\Services\Dependencies\Probes\ObservabilityProbe;
 use App\Services\Dependencies\Probes\PostgresProbe;
 use App\Services\Dependencies\Probes\RedisProbe;
+use App\Listeners\PauseWorkerWhenHardDependencyUnavailable;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\ServiceProvider;
 
 final class DependencyServiceProvider extends ServiceProvider
@@ -29,5 +31,10 @@ final class DependencyServiceProvider extends ServiceProvider
                 Dependency::Observability->value => $app->make(ObservabilityProbe::class),
             ]);
         });
+    }
+
+    public function boot(): void
+    {
+        $this->app['events']->listen(Looping::class, PauseWorkerWhenHardDependencyUnavailable::class);
     }
 }
