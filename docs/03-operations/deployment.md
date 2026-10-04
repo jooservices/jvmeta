@@ -58,6 +58,43 @@ The relevant environment variables are `JVMETA_QUEUE_TIMEOUT` (default `180`),
 `200`). `JVMETA_PHP_BIN` is available for shell-test replacement of the PHP
 binary and defaults to `php`.
 
+## Scheduled crawler commands
+
+The scheduler runs these commands:
+
+- `crawler:sync-sources` every 15 minutes.
+- `crawler:reclaim` and `crawler:seed` every minute.
+- `crawler:feed-pool` every minute with overlapping runs prevented.
+- `crawler:watchdog` every five minutes.
+- `obs:publish-metrics` every minute.
+
+Use the Makefile target for operator-triggered crawl work. `ACTION=tick` runs
+sync-sources, reclaim, and seed in that order; `SITE` and `LIMIT` are passed
+only to seed. `ACTION=dispatch` runs feed-pool. `ACTION=source` runs
+run-source with dispatch enabled after seeding.
+
+```bash
+make crawl ACTION=tick SITE=example LIMIT=50
+make crawl ACTION=dispatch LIMIT=50
+make crawl ACTION=source SITE=example LIMIT=20
+```
+
+### Deprecated command compatibility
+
+`crawl:tick {--source=} {--limit=50}` remains as a deprecated compatibility
+command. It prints a deprecation notice, then runs `crawler:sync-sources`,
+`crawler:reclaim`, and `crawler:seed` in that order. Only seed receives the
+source and limit options. Update external callers to the Makefile target or
+the new command names.
+
+These previous command names remain available as deprecated aliases while
+callers migrate:
+
+- `crawl:dispatch` → `crawler:feed-pool`
+- `crawl:source` → `crawler:run-source`
+- `jvmeta:watchdog` → `crawler:watchdog`
+- `jvmeta:obs-publish-metrics` → `obs:publish-metrics`
+
 ## New instance versus upgrade
 
 The scripts support both deployment cases without renaming the application
@@ -204,8 +241,8 @@ The control deployment was verified with the following result:
   then recreated `api` and `mcp`.
 - Elasticsearch mappings were updated and the full existing movie and
   performer data was reindexed successfully.
-- A temporary scheduler smoke test ran `crawl:tick`, `crawl:dispatch`, and
-  metrics publishing without errors. The scheduler was then stopped again.
+- A temporary scheduler smoke test exercised crawler scheduling and metrics
+  publishing without errors. The scheduler was then stopped again.
 - The final control state has only `api`, `mcp`, and `embedder` running.
   `scheduler`, `worker`, and `flaresolverr` remain stopped until crawler nodes
   are deployed.
