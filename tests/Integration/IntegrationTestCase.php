@@ -96,7 +96,7 @@ abstract class IntegrationTestCase extends BaseTestCase
         ]);
     }
 
-    private function mongo(): MongoClient
+    protected function mongo(): MongoClient
     {
         return new MongoClient(sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
     }

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c54f04ab6051efb8c3d36cc1d0c06817",
+    "content-hash": "34c383f327e0b27db64eb523faf683a4",
     "packages": [
         {
             "name": "brick/math",
@@ -1304,6 +1304,88 @@
                 "source": "https://github.com/jooservices/exceptions"
             },
             "time": "2026-08-30T01:28:14+00:00"
+        },
+        {
+            "name": "jooservices/laravel-config",
+            "version": "v4.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/jooservices/laravel-config.git",
+                "reference": "4acb64ceddf0f1b2a037eb74a8bcd3468b7cb0b5"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/jooservices/laravel-config/zipball/4acb64ceddf0f1b2a037eb74a8bcd3468b7cb0b5",
+                "reference": "4acb64ceddf0f1b2a037eb74a8bcd3468b7cb0b5",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/cache": "^12.0|^13.0",
+                "illuminate/config": "^12.0|^13.0",
+                "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
+                "illuminate/encryption": "^12.0|^13.0",
+                "illuminate/support": "^12.0|^13.0",
+                "laravel/framework": "^12.0|^13.0",
+                "mongodb/laravel-mongodb": "^5.7",
+                "php": "^8.5"
+            },
+            "require-dev": {
+                "captainhook/captainhook": "^5.25",
+                "captainhook/plugin-composer": "^5.3",
+                "fakerphp/faker": "^1.24",
+                "friendsofphp/php-cs-fixer": "^3.65",
+                "larastan/larastan": "^3.9",
+                "laravel/pint": "^1.27",
+                "orchestra/testbench": "^10.0|^11.0",
+                "phpmd/phpmd": "^2.15",
+                "phpstan/phpstan": "^2.1",
+                "phpstan/phpstan-phpunit": "^2.0",
+                "phpstan/phpstan-strict-rules": "^2.0",
+                "phpunit/phpunit": "^12.0 || ^13.0",
+                "squizlabs/php_codesniffer": "^4.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "JOOservices\\LaravelConfig\\ConfigServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "JOOservices\\LaravelConfig\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Viet Vu",
+                    "email": "jooservices@gmail.com"
+                }
+            ],
+            "description": "MongoDB-backed application configuration store for Laravel with typed access and caching",
+            "keywords": [
+                "JOOservices",
+                "caching",
+                "config",
+                "configuration",
+                "laravel",
+                "laravel12",
+                "laravel13",
+                "mongodb",
+                "php",
+                "php85"
+            ],
+            "support": {
+                "issues": "https://github.com/jooservices/laravel-config/issues",
+                "source": "https://github.com/jooservices/laravel-config"
+            },
+            "time": "2026-09-06T15:22:20+00:00"
         },
         {
             "name": "jooservices/laravel-controller",

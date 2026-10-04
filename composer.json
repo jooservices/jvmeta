@@ -16,6 +16,7 @@
         "jooservices/crawlerx": "^1.3",
         "jooservices/dto": "^3.0",
         "jooservices/exceptions": "^4.0",
+        "jooservices/laravel-config": "^4.0",
         "jooservices/laravel-controller": "^4.0",
         "jooservices/laravel-logging": "^4.0",
         "jooservices/laravel-notifications": "^1.0.1",
