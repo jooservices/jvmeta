@@ -149,6 +149,102 @@ final class FetchDetailJobTest extends TestCase
         $this->assertDatabaseMissing('sources', ['slug' => 'ghost']);
     }
 
+    public function test_rate_limited_with_retry_after_reschedules_the_row(): void
+    {
+        $this->freezeSecond();
+        $row = $this->detailRow($this->source('onejav'));
+        $message = fake()->sentence();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_RATE_LIMITED, $message, retryable: true, retryAfterSeconds: 60));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        self::assertSame(1, $row->attempts);
+        self::assertSame($message, $row->last_error);
+        self::assertNull($row->claimed_at);
+        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
+    }
+
+    public function test_retryable_failure_without_hint_uses_backoff_by_attempt(): void
+    {
+        $this->freezeSecond();
+        $row = $this->detailRow($this->source('onejav'));
+        $row->forceFill(['attempts' => 2])->save();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        self::assertSame(2, $row->attempts);
+        self::assertSame(now()->addSeconds(300)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+    }
+
+    public function test_retryable_failure_at_max_attempts_fails_the_row(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+        $row->forceFill(['attempts' => 3])->save();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 3]);
+    }
+
+    public function test_not_found_fails_the_row_without_retry(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NOT_FOUND, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'next_attempt_at' => null]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_SOFT404]);
+    }
+
+    public function test_ssrf_blocked_fails_the_row_with_a_blocked_event(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_SSRF_BLOCKED, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $event = CrawlEvent::query()->where('source_slug', 'onejav')->sole();
+        self::assertSame(CrawlEvent::KIND_BLOCKED, $event->kind);
+        self::assertSame(CrawlerxClient::ERROR_SSRF_BLOCKED, $event->detail['error_code'] ?? null);
+    }
+
+    public function test_auth_required_records_an_auth_event(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_AUTH_REQUIRED, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_AUTH]);
+    }
+
+    public function test_unknown_error_code_is_parse_drift(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_UNKNOWN, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
+    }
+
     private function source(string $slug): Source
     {
         return Source::factory()->create([
@@ -168,6 +264,7 @@ final class FetchDetailJobTest extends TestCase
             'url' => 'https://onejav.com/torrent/ymds282',
             'kind' => CrawlQueue::KIND_DETAIL,
             'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 1,
             'max_attempts' => 3,
         ]);
     }

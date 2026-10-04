@@ -10,17 +10,16 @@ use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
 use JOOservices\CrawlerX\Dto\Entity\MovieDto;
 use JOOservices\CrawlerX\Dto\Entity\PerformerDto;
 use JOOservices\CrawlerX\Dto\FetchOptionsDto;
-use JOOservices\CrawlerX\Dto\HttpOptionsDto;
 use JOOservices\CrawlerX\Enums\CrawlErrorCode;
 use JOOservices\CrawlerX\Enums\CrawlType;
-use JOOservices\CrawlerX\Enums\FetchProfile;
 use App\Observability\ObservabilityEmitter;
 
 /**
- * Thin adapter over the CrawlerX public API. Resolves the per-source fetch
- * options from config, routes the request explicitly by site and crawl type,
- * and normalizes every outcome into a CrawlerxFetchResult. Never writes to
- * the database. Not final so tests can substitute a fixture-backed fake.
+ * Thin adapter over the CrawlerX public API. crawlerx owns every fetch
+ * decision; jvmeta only passes a time budget (job timeout minus a margin),
+ * routes the request explicitly by site and crawl type, and normalizes every
+ * outcome into a CrawlerxFetchResult. Never writes to the database. Not final
+ * so tests can substitute a fixture-backed fake.
  */
 class CrawlerxClient
 {
@@ -37,6 +36,25 @@ class CrawlerxClient
     public const ERROR_ADAPTER_NOT_FOUND = 'adapter_not_found';
 
     public const ERROR_SOFT404 = 'soft404';
+
+    public const ERROR_NOT_FOUND = 'not_found';
+
+    public const ERROR_GONE = 'gone';
+
+    public const ERROR_RATE_LIMITED = 'rate_limited';
+
+    public const ERROR_TIMEOUT = 'timeout';
+
+    public const ERROR_NETWORK = 'network';
+
+    public const ERROR_AUTH_REQUIRED = 'auth_required';
+
+    public const ERROR_SSRF_BLOCKED = 'ssrf_blocked';
+
+    public const ERROR_UNKNOWN = 'unknown';
+
+    /** Seconds kept free between the crawlerx deadline and the worker job timeout. */
+    private const DEADLINE_MARGIN_SECONDS = 30;
 
     public function fetchListing(string $sourceSlug, string $url): CrawlerxFetchResult
     {
@@ -85,7 +103,7 @@ class CrawlerxClient
         $outcome = CrawlerX::url($url)
             ->site($sourceSlug)
             ->type($type)
-            ->options($this->optionsFor($sourceSlug))
+            ->options($this->options())
             ->tryCrawl();
 
         if ($outcome->failed()) {
@@ -94,6 +112,9 @@ class CrawlerxClient
             return CrawlerxFetchResult::failure(
                 $this->errorCode($error->code, $error->fetch?->challengeDetected),
                 $error->message,
+                $error->retryable,
+                $error->retryAfterSeconds,
+                $error->fetch->attempts ?? [],
             );
         }
 
@@ -157,41 +178,11 @@ class CrawlerxClient
         return CrawlerxFetchResult::gallery(GalleryDto::fromParsed($externalId, $title, $payload));
     }
 
-    private function optionsFor(string $sourceSlug): ?CrawlOptionsDto
+    private function options(): CrawlOptionsDto
     {
-        $defaults = config('jvmeta_sources.defaults.fetch', []);
-        $sourceFetch = config("jvmeta_sources.sources.{$sourceSlug}.fetch", []);
-        $fetch = [];
+        $deadline = (int) config('jvmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
 
-        if (is_array($defaults)) {
-            $fetch = $defaults;
-        }
-
-        if (is_array($sourceFetch) && $sourceFetch !== []) {
-            $fetch = array_replace_recursive($fetch, $sourceFetch);
-        }
-
-        if ($fetch === []) {
-            return null;
-        }
-
-        $fetchOptions = null;
-        $profile = $fetch['profile'] ?? null;
-        if (is_string($profile) && $profile !== '') {
-            $fetchOptions = new FetchOptionsDto(profile: FetchProfile::tryFrom($profile));
-        }
-
-        $httpOptions = null;
-        $timeout = $fetch['http']['timeout'] ?? null;
-        if (is_int($timeout) && $timeout > 0) {
-            $httpOptions = new HttpOptionsDto(timeout: $timeout);
-        }
-
-        if ($fetchOptions === null && $httpOptions === null) {
-            return null;
-        }
-
-        return new CrawlOptionsDto(http: $httpOptions, fetch: $fetchOptions);
+        return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: max(1, $deadline)));
     }
 
     private function errorCode(?CrawlErrorCode $code, ?bool $challengeDetected): string
@@ -205,8 +196,16 @@ class CrawlerxClient
             CrawlErrorCode::UnsupportedUrl => self::ERROR_UNSUPPORTED_URL,
             CrawlErrorCode::AmbiguousUrl => self::ERROR_AMBIGUOUS_URL,
             CrawlErrorCode::AdapterNotFound => self::ERROR_ADAPTER_NOT_FOUND,
-            CrawlErrorCode::ParseFailed, CrawlErrorCode::Unknown => self::ERROR_PARSE_FAILED,
-            default => self::ERROR_PARSE_FAILED,
+            CrawlErrorCode::ParseFailed => self::ERROR_PARSE_FAILED,
+            CrawlErrorCode::NotFound => self::ERROR_NOT_FOUND,
+            CrawlErrorCode::Gone => self::ERROR_GONE,
+            CrawlErrorCode::RateLimited => self::ERROR_RATE_LIMITED,
+            CrawlErrorCode::Timeout => self::ERROR_TIMEOUT,
+            CrawlErrorCode::Challenge => self::ERROR_CHALLENGE,
+            CrawlErrorCode::Network => self::ERROR_NETWORK,
+            CrawlErrorCode::AuthRequired => self::ERROR_AUTH_REQUIRED,
+            CrawlErrorCode::SsrfBlocked => self::ERROR_SSRF_BLOCKED,
+            CrawlErrorCode::Unknown, null => self::ERROR_UNKNOWN,
         };
     }
 }

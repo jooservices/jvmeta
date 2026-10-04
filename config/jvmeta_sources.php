@@ -37,14 +37,6 @@ return [
                 'directors' => ['director', 'Director', 'directors', '監督'],
             ],
         ],
-        // Default fetch profile for crawlerx (HTTP → impersonate → PW/stealth → Flare).
-        // Override per source with sources.<slug>.fetch.profile.
-        'fetch' => [
-            'profile' => env('JVMETA_FETCH_PROFILE', 'browser_likely'),
-            'http' => [
-                'timeout' => (int) env('JVMETA_FETCH_TIMEOUT', 90),
-            ],
-        ],
     ],
     'sources' => [
         'javdb' => [

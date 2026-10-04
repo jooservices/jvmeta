@@ -15,6 +15,7 @@ class CrawlEvent extends Model
     public const KIND_DOMAIN_CHANGE = 'domain_change';
     public const KIND_PROXY_EXHAUSTED = 'proxy_exhausted';
     public const KIND_PARSE_DRIFT = 'parse_drift';
+    public const KIND_AUTH = 'auth';
 
     protected $table = 'crawl_events';
     public $timestamps = false;

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6b14e61eb893a0d3d9b2db95e28702b4",
+    "content-hash": "c54f04ab6051efb8c3d36cc1d0c06817",
     "packages": [
         {
             "name": "brick/math",
@@ -1063,16 +1063,16 @@
         },
         {
             "name": "jooservices/client",
-            "version": "v4.2.0",
+            "version": "v4.4.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/client.git",
-                "reference": "e0103a8a74dd17f1f194b208eaf38aaac64cc5fd"
+                "reference": "30d1e5d968446c405bf5f4783cc9f5c62cd0842f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/client/zipball/e0103a8a74dd17f1f194b208eaf38aaac64cc5fd",
-                "reference": "e0103a8a74dd17f1f194b208eaf38aaac64cc5fd",
+                "url": "https://api.github.com/repos/jooservices/client/zipball/30d1e5d968446c405bf5f4783cc9f5c62cd0842f",
+                "reference": "30d1e5d968446c405bf5f4783cc9f5c62cd0842f",
                 "shasum": ""
             },
             "require": {
@@ -1086,7 +1086,9 @@
             },
             "require-dev": {
                 "captainhook/captainhook": "^5.23",
+                "fakerphp/faker": "^1.24",
                 "friendsofphp/php-cs-fixer": "^3.65",
+                "guzzlehttp/guzzle": "^7.9",
                 "laravel/pint": "^1.18",
                 "phpbench/phpbench": "^1.6",
                 "phpmd/phpmd": "^2.15",
@@ -1115,38 +1117,40 @@
             "description": "PSR-18 HTTP client with JOOservices developer experience.",
             "support": {
                 "issues": "https://github.com/jooservices/client/issues",
-                "source": "https://github.com/jooservices/client/tree/v4.2.0"
+                "source": "https://github.com/jooservices/client/tree/v4.4.1"
             },
-            "time": "2026-08-28T19:59:26+00:00"
+            "time": "2026-10-04T00:16:48+00:00"
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.2.0",
+            "version": "v1.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "8fbdda663524d9d1d226b7f0653eb61711b9bc77"
+                "reference": "c601eaf7cc0c6c1f628b5f1b4db721bf604c0e6f"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/8fbdda663524d9d1d226b7f0653eb61711b9bc77",
-                "reference": "8fbdda663524d9d1d226b7f0653eb61711b9bc77",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/c601eaf7cc0c6c1f628b5f1b4db721bf604c0e6f",
+                "reference": "c601eaf7cc0c6c1f628b5f1b4db721bf604c0e6f",
                 "shasum": ""
             },
             "require": {
                 "ext-dom": "*",
                 "ext-libxml": "*",
-                "jooservices/client": "^4.0",
+                "jooservices/client": "^4.4",
                 "jooservices/dto": "^3.0",
                 "jooservices/exceptions": "^4.0",
                 "nyholm/psr7": "^1.8",
                 "php": "^8.5",
                 "psr/http-message": "^2.0",
+                "psr/simple-cache": "^3.0",
                 "symfony/css-selector": "^7.0 || ^8.0",
                 "symfony/dom-crawler": "^7.0 || ^8.0"
             },
             "require-dev": {
                 "captainhook/captainhook": "^5.23",
+                "fakerphp/faker": "^1.24",
                 "friendsofphp/php-cs-fixer": "^3.65",
                 "laravel/pint": "^1.18",
                 "phpmd/phpmd": "^2.15",
@@ -1169,9 +1173,9 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.2.0"
+                "source": "https://github.com/jooservices/crawlerx/tree/v1.3.0"
             },
-            "time": "2026-10-02T00:45:33+00:00"
+            "time": "2026-10-04T17:50:17+00:00"
         },
         {
             "name": "jooservices/dto",

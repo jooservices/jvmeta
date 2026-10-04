@@ -19,11 +19,16 @@ use Illuminate\Support\Facades\Event;
 
 /**
  * Shared crawl_queue row bookkeeping for the fetch jobs: row lookup, terminal
- * state transitions, crawl event recording, and the per-source failure
- * bookkeeping (attempts, throttle, circuit breaker).
+ * state transitions, crawlerx-driven retry scheduling, crawl event recording,
+ * and the per-source failure bookkeeping (throttle, circuit breaker).
+ *
+ * attempts is incremented once per execution by CrawlQueueService::claimNext.
  */
 trait HandlesCrawlQueueRow
 {
+    /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
+    private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
+
     private function queueRow(int $id, string $expectedKind): ?CrawlQueue
     {
         $row = CrawlQueue::query()->find($id);
@@ -63,11 +68,32 @@ trait HandlesCrawlQueueRow
     {
         $row->forceFill([
             'status' => CrawlQueue::STATUS_FAILED,
-            'attempts' => $row->attempts + 1,
             'claimed_at' => null,
             'locked_by' => null,
             'last_error' => $error,
         ])->save();
+    }
+
+    private function markRetry(CrawlQueue $row, ?string $error, int $delaySeconds): void
+    {
+        $row->forceFill([
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => now()->addSeconds($delaySeconds),
+            'claimed_at' => null,
+            'locked_by' => null,
+            'last_error' => $error,
+        ])->save();
+    }
+
+    private function retryDelaySeconds(CrawlQueue $row, ?int $retryAfterSeconds): int
+    {
+        if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
+            return $retryAfterSeconds;
+        }
+
+        $index = min(max($row->attempts, 1), count(self::RETRY_BACKOFF_SECONDS)) - 1;
+
+        return self::RETRY_BACKOFF_SECONDS[$index];
     }
 
     /**
@@ -88,14 +114,21 @@ trait HandlesCrawlQueueRow
         $errorCode = $result->errorCode ?? CrawlerxClient::ERROR_PARSE_FAILED;
         $message = $result->errorMessage ?? 'Crawl failed.';
         $soft404 = app(Soft404Detector::class)->matches($message, $source)
-            || $errorCode === CrawlerxClient::ERROR_SOFT404;
+            || in_array($errorCode, [CrawlerxClient::ERROR_SOFT404, CrawlerxClient::ERROR_NOT_FOUND, CrawlerxClient::ERROR_GONE], true);
 
         $this->recordEvent($row->source_slug, $this->eventKind($errorCode, $soft404), $row->url, [
             'error_code' => $errorCode,
             'error' => $message,
             'soft404' => $soft404,
+            'retryable' => $result->retryable,
         ]);
-        $this->markFailed($row, $message);
+
+        if ($result->retryable && $row->attempts < $row->max_attempts) {
+            $this->markRetry($row, $message, $this->retryDelaySeconds($row, $result->retryAfterSeconds));
+        } else {
+            $this->markFailed($row, $message);
+        }
+
         $breaker->recordFailure($source, $message);
         $throttle->onFailure($source);
 
@@ -123,9 +156,16 @@ trait HandlesCrawlQueueRow
         }
 
         return match ($errorCode) {
-            CrawlerxClient::ERROR_BLOCKED => CrawlEvent::KIND_BLOCKED,
+            CrawlerxClient::ERROR_BLOCKED,
+            CrawlerxClient::ERROR_RATE_LIMITED,
+            CrawlerxClient::ERROR_SSRF_BLOCKED,
+            CrawlerxClient::ERROR_TIMEOUT,
+            CrawlerxClient::ERROR_NETWORK => CrawlEvent::KIND_BLOCKED,
             CrawlerxClient::ERROR_CHALLENGE => CrawlEvent::KIND_CHALLENGE,
-            CrawlerxClient::ERROR_SOFT404 => CrawlEvent::KIND_SOFT404,
+            CrawlerxClient::ERROR_SOFT404,
+            CrawlerxClient::ERROR_NOT_FOUND,
+            CrawlerxClient::ERROR_GONE => CrawlEvent::KIND_SOFT404,
+            CrawlerxClient::ERROR_AUTH_REQUIRED => CrawlEvent::KIND_AUTH,
             default => CrawlEvent::KIND_PARSE_DRIFT,
         };
     }
