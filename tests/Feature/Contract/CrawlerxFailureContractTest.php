@@ -7,7 +7,6 @@ namespace Tests\Feature\Contract;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Movie;
-use App\Models\Source;
 use JOOservices\Client\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Psr\Http\Message\ResponseInterface;
@@ -16,11 +15,9 @@ use Throwable;
 
 /**
  * Generated failure responses go through the real crawlerx stack and the
- * jvmeta detail job. The expectations pin the crawlerx 1.2 contract: every
- * fetch failure is "blocked" (or "challenge") and the row fails on the first
- * attempt without a retry. When jvmeta moves to crawlerx 1.3 (terminal codes,
- * retryable / retryAfterSeconds; docs/01-projects/crawlerx/IMPROVEMENT-PLAN.md
- * lane JV1) these expectations change on purpose.
+ * jvmeta detail job. The expectations pin the crawlerx 1.3 contract: terminal
+ * codes (not_found, gone, auth_required) fail the row at once; retryable codes
+ * put it back to pending with crawlerx's Retry-After hint or jvmeta's backoff.
  */
 final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
 {
@@ -28,63 +25,98 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
 
     private const URL = 'https://onejav.com/torrent/ymds282';
 
-    /** @return array<string, array{\Closure(): (ResponseInterface|Throwable), string}> */
-    public static function fetchFailures(): array
+    /** @return array<string, array{\Closure(): (ResponseInterface|Throwable), string, string}> */
+    public static function terminalFailures(): array
+    {
+        return [
+            'not found 404' => [static fn() => TestResponse::make(404, [], fake()->sentence()), 'not_found', CrawlEvent::KIND_SOFT404],
+            'gone 410' => [static fn() => TestResponse::make(410, [], fake()->sentence()), 'gone', CrawlEvent::KIND_SOFT404],
+            'auth required 401' => [static fn() => TestResponse::make(401, [], fake()->sentence()), 'auth_required', CrawlEvent::KIND_AUTH],
+        ];
+    }
+
+    /** @return array<string, array{\Closure(): (ResponseInterface|Throwable), string, string, int}> */
+    public static function retryableFailures(): array
     {
         $challenge = '<html><head><title>Just a moment...</title></head><body>Checking your browser</body></html>';
+        $noMovieFields = static fn() => TestResponse::make(200, ['Content-Type' => 'text/html'], '<html><body><p>' . fake()->paragraph() . '</p></body></html>');
 
         return [
-            'not found 404' => [static fn() => TestResponse::make(404, [], fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'gone 410' => [static fn() => TestResponse::make(410, [], fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'rate limited 429 with Retry-After' => [static fn() => TestResponse::make(429, ['Retry-After' => '120'], fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'server error 500' => [static fn() => TestResponse::make(500, [], fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'unavailable 503 with Retry-After' => [static fn() => TestResponse::make(503, ['Retry-After' => '30'], fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'empty 200 body' => [static fn() => TestResponse::make(200, [], ''), CrawlEvent::KIND_BLOCKED],
-            'network error' => [static fn() => new RuntimeException(fake()->sentence()), CrawlEvent::KIND_BLOCKED],
-            'cloudflare challenge 403' => [static fn() => TestResponse::make(403, ['cf-mitigated' => 'challenge', 'Server' => 'cloudflare'], $challenge), CrawlEvent::KIND_CHALLENGE],
+            'rate limited 429 with Retry-After' => [static fn() => TestResponse::make(429, ['Retry-After' => '120'], fake()->sentence()), 'rate_limited', CrawlEvent::KIND_BLOCKED, 120],
+            'unavailable 503 with Retry-After' => [static fn() => TestResponse::make(503, ['Retry-After' => '30'], fake()->sentence()), 'rate_limited', CrawlEvent::KIND_BLOCKED, 30],
+            'server error 500' => [static fn() => TestResponse::make(500, [], fake()->sentence()), 'network', CrawlEvent::KIND_BLOCKED, 60],
+            'empty 200 body' => [static fn() => TestResponse::make(200, [], ''), 'network', CrawlEvent::KIND_BLOCKED, 60],
+            'network error' => [static fn() => new RuntimeException(fake()->sentence()), 'network', CrawlEvent::KIND_BLOCKED, 60],
+            'cloudflare challenge 403' => [static fn() => TestResponse::make(403, ['cf-mitigated' => 'challenge', 'Server' => 'cloudflare'], $challenge), 'challenge', CrawlEvent::KIND_CHALLENGE, 60],
+            // crawlerx 1.3 treats a page without the adapter's readiness markers as not ready, not as parse drift.
+            'page without movie fields' => [$noMovieFields, 'network', CrawlEvent::KIND_BLOCKED, 60],
         ];
     }
 
     /** @param \Closure(): (ResponseInterface|Throwable) $response */
-    #[DataProvider('fetchFailures')]
-    public function test_fetch_failure_fails_the_row_without_storing(\Closure $response, string $eventKind): void
+    #[DataProvider('terminalFailures')]
+    public function test_terminal_failure_fails_the_row_without_retry(\Closure $response, string $errorCode, string $eventKind): void
     {
-        $row = $this->detailRow();
+        $row = $this->detailRow(attempts: 1);
         $this->respondWith(self::URL, $response(), $response(), $response());
 
         $this->dispatchFor($row);
 
-        $this->assertFailedOnce($row, $eventKind);
-        self::assertStringContainsString('All fetch methods exhausted', (string) $row->refresh()->last_error);
-    }
-
-    public function test_page_without_movie_fields_is_parse_drift(): void
-    {
-        $row = $this->detailRow();
-        $html = '<html><body><p>' . fake()->paragraph() . '</p></body></html>';
-        $this->respondWith(self::URL, TestResponse::make(200, ['Content-Type' => 'text/html'], $html));
-
-        $this->dispatchFor($row);
-
-        $this->assertFailedOnce($row, CrawlEvent::KIND_PARSE_DRIFT);
-        self::assertStringContainsString('did not contain expected movie fields', (string) $row->refresh()->last_error);
-    }
-
-    private function detailRow(): CrawlQueue
-    {
-        $this->source(self::SLUG);
-
-        return $this->claimedRow(self::SLUG, self::URL, CrawlQueue::KIND_DETAIL);
-    }
-
-    private function assertFailedOnce(CrawlQueue $row, string $eventKind): void
-    {
         $row->refresh();
         self::assertSame(CrawlQueue::STATUS_FAILED, $row->status);
         self::assertSame(1, $row->attempts);
-        self::assertNull($row->next_attempt_at, 'crawlerx 1.2 gives no retry hint, so jvmeta does not reschedule');
+        self::assertNotNull($row->last_error);
+        $this->assertNothingStored($errorCode, $eventKind);
+    }
+
+    /** @param \Closure(): (ResponseInterface|Throwable) $response */
+    #[DataProvider('retryableFailures')]
+    public function test_retryable_failure_reschedules_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
+    {
+        $this->freezeSecond();
+        $row = $this->detailRow(attempts: 1);
+        $this->respondWith(self::URL, $response(), $response(), $response());
+
+        $this->dispatchFor($row);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        self::assertSame(1, $row->attempts);
+        self::assertNull($row->locked_by);
+        self::assertNotNull($row->last_error);
+        self::assertSame(now()->addSeconds($delaySeconds)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+        $this->assertNothingStored($errorCode, $eventKind);
+    }
+
+    /** @param \Closure(): (ResponseInterface|Throwable) $response */
+    #[DataProvider('retryableFailures')]
+    public function test_retryable_failure_at_max_attempts_fails_the_row(\Closure $response, string $errorCode, string $eventKind): void
+    {
+        $row = $this->detailRow(attempts: 3);
+        $this->respondWith(self::URL, $response(), $response(), $response());
+
+        $this->dispatchFor($row);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_FAILED, $row->status);
+        self::assertSame(3, $row->attempts);
+        $this->assertNothingStored($errorCode, $eventKind);
+    }
+
+    private function detailRow(int $attempts): CrawlQueue
+    {
+        $this->source(self::SLUG);
+        $row = $this->claimedRow(self::SLUG, self::URL, CrawlQueue::KIND_DETAIL);
+        $row->forceFill(['attempts' => $attempts])->save();
+
+        return $row;
+    }
+
+    private function assertNothingStored(string $errorCode, string $eventKind): void
+    {
         self::assertSame(0, Movie::query()->count());
-        $this->assertDatabaseHas('crawl_events', ['source_slug' => self::SLUG, 'kind' => $eventKind]);
-        self::assertSame(1, Source::query()->where('slug', self::SLUG)->value('consecutive_failures'));
+        $event = CrawlEvent::query()->where('source_slug', self::SLUG)->sole();
+        self::assertSame($eventKind, $event->kind);
+        self::assertSame($errorCode, $event->detail['error_code'] ?? null);
     }
 }

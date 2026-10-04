@@ -1,10 +1,10 @@
 {
   "source_url": "https://www.aisex.jp/actress/",
   "final_url": "https://www.aisex.jp/actress/",
-  "captured_at": "2026-10-01T20:29:42.329Z",
+  "captured_at": "2026-10-03T14:41:45.115Z",
   "http_status": 200,
-  "content_hash": "d8093f169b7d97717259129997d6e11e361791b79d17f8d4e0a17be0a6f6619a",
+  "content_hash": "618828ed9722201582a5b01941a7d7009d9ddd8bad9fea8c48656263c69fc77d",
   "target_type": "performer_listing",
-  "fetch_method": "http",
-  "sanitized": false
+  "fetch_method": "playwright",
+  "sanitized": true
 }
