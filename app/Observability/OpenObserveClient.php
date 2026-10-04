@@ -13,6 +13,31 @@ use Throwable;
  */
 final class OpenObserveClient
 {
+    private const LOG_BUFFER_CAPACITY = 1000;
+
+    private const LOG_BATCH_SIZE = 50;
+
+    private const FAILURE_THRESHOLD = 3;
+
+    private const CIRCUIT_COOLDOWN_SECONDS = 30;
+
+    private const MAX_SHIPPING_WAIT_NANOSECONDS = 200_000_000;
+
+    /** @var list<array<string, mixed>> */
+    private array $logBuffer = [];
+
+    private int $droppedLogCount = 0;
+
+    private int $consecutiveFailures = 0;
+
+    private ?int $retryAt = null;
+
+    private bool $halfOpen = false;
+
+    private ?int $requestObjectId = null;
+
+    private ?int $requestDeadlineNanoseconds = null;
+
     public function __construct(
         private readonly TelemetrySanitizer $sanitizer,
     ) {}
@@ -43,7 +68,25 @@ final class OpenObserveClient
             );
         }
 
-        $this->postJson($this->jsonIngestUrl($stream), $payload);
+        $capacity = max(1, (int) config('openobserve.log_buffer_capacity', self::LOG_BUFFER_CAPACITY));
+        $availableSlots = max(0, $capacity - count($this->logBuffer));
+        $accepted = array_slice($payload, 0, $availableSlots);
+        $this->logBuffer = [...$this->logBuffer, ...$accepted];
+        $dropped = count($payload) - count($accepted);
+        if ($dropped > 0) {
+            $this->droppedLogCount += $dropped;
+            Log::channel('single')->warning('OpenObserve log buffer is full; records were dropped.', [
+                'dropped' => $dropped,
+                'total_dropped' => $this->droppedLogCount,
+            ]);
+        }
+
+        $this->flushLogBuffer($stream);
+    }
+
+    public function droppedLogCount(): int
+    {
+        return $this->droppedLogCount;
     }
 
     /**
@@ -194,10 +237,20 @@ final class OpenObserveClient
     /**
      * @param  array<mixed>|list<array<string, mixed>>  $body
      */
-    private function postJson(string $url, array $body, string $contentType = 'application/json'): void
+    private function postJson(string $url, array $body, string $contentType = 'application/json'): bool
     {
+        if (! $this->canAttemptRequest()) {
+            return false;
+        }
+
+        $timeout = $this->shippingTimeoutSeconds();
+        if ($timeout <= 0) {
+            return false;
+        }
+
         try {
-            $pending = Http::timeout((int) config('openobserve.timeout', 3))
+            $pending = Http::timeout($timeout)
+                ->connectTimeout($timeout)
                 ->acceptJson()
                 ->withHeaders(['Content-Type' => $contentType]);
 
@@ -209,17 +262,95 @@ final class OpenObserveClient
 
             $response = $pending->post($url, $body);
             if ($response->failed()) {
+                $this->recordRequestFailure();
                 Log::channel('single')->warning('OpenObserve ingest failed.', [
                     'status' => $response->status(),
                     'url' => $this->redactUrl($url),
                 ]);
+
+                return false;
             }
+
+            $this->recordRequestSuccess();
+
+            return true;
         } catch (Throwable $exception) {
+            $this->recordRequestFailure();
             Log::channel('single')->warning('OpenObserve ingest error.', [
                 'error' => $exception->getMessage(),
                 'url' => $this->redactUrl($url),
             ]);
+
+            return false;
         }
+    }
+
+    private function flushLogBuffer(string $stream): void
+    {
+        if ($this->logBuffer === []) {
+            return;
+        }
+
+        $batch = array_slice($this->logBuffer, 0, self::LOG_BATCH_SIZE);
+        if (! $this->postJson($this->jsonIngestUrl($stream), $batch)) {
+            return;
+        }
+
+        $this->logBuffer = array_slice($this->logBuffer, count($batch));
+    }
+
+    private function canAttemptRequest(): bool
+    {
+        if ($this->retryAt === null) {
+            return true;
+        }
+
+        if (now()->getTimestamp() < $this->retryAt) {
+            return false;
+        }
+
+        $this->retryAt = null;
+        $this->halfOpen = true;
+
+        return true;
+    }
+
+    private function recordRequestSuccess(): void
+    {
+        $this->consecutiveFailures = 0;
+        $this->retryAt = null;
+        $this->halfOpen = false;
+    }
+
+    private function recordRequestFailure(): void
+    {
+        $this->consecutiveFailures++;
+        if (! $this->halfOpen && $this->consecutiveFailures < self::FAILURE_THRESHOLD) {
+            return;
+        }
+
+        $this->consecutiveFailures = self::FAILURE_THRESHOLD;
+        $this->retryAt = now()->getTimestamp() + self::CIRCUIT_COOLDOWN_SECONDS;
+        $this->halfOpen = false;
+    }
+
+    private function shippingTimeoutSeconds(): float
+    {
+        $timeout = min(0.2, max(0.001, (float) config('openobserve.timeout', 3)));
+        if (app()->runningInConsole() || ! app()->bound('request')) {
+            return $timeout;
+        }
+
+        $request = app('request');
+        $requestObjectId = spl_object_id($request);
+        if ($this->requestObjectId !== $requestObjectId) {
+            $this->requestObjectId = $requestObjectId;
+            $this->requestDeadlineNanoseconds = hrtime(true) + self::MAX_SHIPPING_WAIT_NANOSECONDS;
+        }
+
+        $remainingNanoseconds = ($this->requestDeadlineNanoseconds ?? hrtime(true)) - hrtime(true);
+
+        return min($timeout, max(0, $remainingNanoseconds) / 1_000_000_000);
     }
 
     private function redactUrl(string $url): string
