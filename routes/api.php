@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Admin\ApiKeyController;
+use App\Http\Controllers\Admin\SourceLoginCookieController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HealthLiveController;
 use App\Http\Controllers\McpHttpController;
@@ -28,6 +29,8 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('keys', [ApiKeyController::class, 'index']);
             Route::post('keys', [ApiKeyController::class, 'store']);
             Route::delete('keys/{id}', [ApiKeyController::class, 'destroy'])->whereNumber('id');
+            Route::put('sources/{slug}/login-cookies', [SourceLoginCookieController::class, 'update']);
+            Route::delete('sources/{slug}/login-cookies', [SourceLoginCookieController::class, 'destroy']);
         });
 
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->get('auth/verify', static function (): JsonResponse {
