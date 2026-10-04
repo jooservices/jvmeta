@@ -10,10 +10,23 @@ if [[ "${JVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
   docker build --quiet --tag "${image}" --file "${root}/docker/ci/Dockerfile" "${root}/docker/ci" >/dev/null
 fi
 
+volumes=(--volume "${root}:/app")
+# In a git worktree the common git dir lives outside the repository root; mount it
+# at the same absolute path so git (and CaptainHook's commit-msg) can resolve it.
+git_common_dir="$(git -C "${root}" rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "${git_common_dir}" ]]; then
+  if [[ "${git_common_dir}" != /* ]]; then
+    git_common_dir="$(cd "${root}/${git_common_dir}" && pwd)"
+  fi
+  if [[ "${git_common_dir}" != "${root}" && "${git_common_dir}" != "${root}/"* ]]; then
+    volumes+=(--volume "${git_common_dir}:${git_common_dir}:rw")
+  fi
+fi
+
 exec docker run --rm \
   --user "$(id -u):$(id -g)" \
   --env HOME=/tmp \
-  --volume "${root}:/app" \
+  "${volumes[@]}" \
   --volume "${JVMETA_CI_COMPOSER_CACHE:-jvmeta-ci-composer-cache}:/tmp/composer-cache" \
   --workdir /app \
   "${image}" "$@"
