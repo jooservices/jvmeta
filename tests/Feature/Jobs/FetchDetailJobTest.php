@@ -44,7 +44,7 @@ final class FetchDetailJobTest extends TestCase
         self::assertNotNull($draft->crawledAt);
 
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'circuit_state' => Source::CIRCUIT_CLOSED, 'consecutive_failures' => 0]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         $this->assertSame(0, Movie::query()->count());
     }
@@ -83,7 +83,7 @@ final class FetchDetailJobTest extends TestCase
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
     public function test_normalization_failure_records_parse_drift_and_never_delivers_draft(): void
@@ -108,7 +108,7 @@ final class FetchDetailJobTest extends TestCase
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
     public function test_missing_normalizer_fails_row_with_parse_drift(): void
@@ -128,7 +128,7 @@ final class FetchDetailJobTest extends TestCase
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'mystery', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
-        $this->assertDatabaseHas('sources', ['slug' => 'mystery', 'consecutive_failures' => 1]);
+        $this->assertNotNull(Source::query()->find('mystery')?->last_error_at);
     }
 
     public function test_unknown_source_slug_fails_row_without_throttle_or_circuit_touch(): void

@@ -41,7 +41,7 @@ final class StatusHealthCheck
         $sources = Source::query()
             ->orderBy('priority')
             ->orderBy('slug')
-            ->get(['slug', 'circuit_state', 'last_success_at', 'last_error_at', 'consecutive_failures']);
+            ->get(['slug', 'last_success_at', 'last_error_at']);
 
         $queue = [
             'pending' => CrawlQueue::query()->where('status', CrawlQueue::STATUS_PENDING)->count(),
@@ -61,23 +61,13 @@ final class StatusHealthCheck
 
             $sourceRows[] = [
                 'slug' => $source->slug,
-                'circuit_state' => (string) $source->circuit_state,
                 'last_success_at' => $lastSuccess instanceof \DateTimeInterface
                     ? $lastSuccess->format(DATE_ATOM)
                     : null,
                 'last_error_at' => $lastError instanceof \DateTimeInterface
                     ? $lastError->format(DATE_ATOM)
                     : null,
-                'consecutive_failures' => (int) $source->consecutive_failures,
             ];
-        }
-
-        $anyOpen = false;
-        foreach ($sources as $source) {
-            if ($source->circuit_state === Source::CIRCUIT_OPEN) {
-                $anyOpen = true;
-                break;
-            }
         }
 
         $hardDependencyDown = false;
@@ -96,7 +86,7 @@ final class StatusHealthCheck
 
         $status = $hardDependencyDown
             ? 'down'
-            : (($softDependencyDown || $anyOpen || $workerStale) ? 'degraded' : 'ok');
+            : (($softDependencyDown || $workerStale) ? 'degraded' : 'ok');
 
         return [
             'status' => $status,

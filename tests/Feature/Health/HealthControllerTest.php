@@ -37,8 +37,6 @@ final class HealthControllerTest extends TestCase
             'gap_seconds_min' => 20,
             'gap_seconds_max' => 60,
             'gap_seconds_current' => 20,
-            'consecutive_failures' => 0,
-            'circuit_state' => Source::CIRCUIT_CLOSED,
             'last_success_at' => now(),
         ]);
 

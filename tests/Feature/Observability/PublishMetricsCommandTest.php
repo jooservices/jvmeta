@@ -29,9 +29,7 @@ final class PublishMetricsCommandTest extends TestCase
     {
         Source::factory()->create([
             'slug' => 'javdb',
-            'circuit_state' => Source::CIRCUIT_CLOSED,
             'gap_seconds_current' => 30,
-            'consecutive_failures' => 0,
             'last_success_at' => now()->subMinutes(5),
         ]);
 
@@ -51,7 +49,9 @@ final class PublishMetricsCommandTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             return str_contains($request->url(), '/v1/metrics')
-                && str_contains($request->body(), 'jvmeta_source_circuit_state');
+                && str_contains($request->body(), 'jvmeta_source_gap_seconds')
+                && ! str_contains($request->body(), 'jvmeta_source_circuit_state')
+                && ! str_contains($request->body(), 'jvmeta_source_consecutive_failures');
         });
     }
 

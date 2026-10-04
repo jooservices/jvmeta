@@ -101,8 +101,9 @@ final class CrawlStatusService
                 'slug' => $source->slug,
                 'name' => $source->name,
                 'enabled' => (bool) $source->enabled,
-                'circuit_state' => (string) $source->circuit_state,
-                'consecutive_failures' => (int) $source->consecutive_failures,
+                // Deprecated: crawlerx owns fetch health; kept so MCP crawl_status keys stay stable.
+                'circuit_state' => 'closed',
+                'consecutive_failures' => 0,
                 'gap_seconds_current' => (float) $source->gap_seconds_current,
                 'gap_seconds_min' => (float) $source->gap_seconds_min,
                 'gap_seconds_max' => (float) $source->gap_seconds_max,

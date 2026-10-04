@@ -26,14 +26,4 @@ return [
         'heartbeat_stale_seconds' => (int) env('JVMETA_WATCHDOG_HEARTBEAT_STALE_SECONDS', 600),
         'source_stale_seconds' => (int) env('JVMETA_WATCHDOG_SOURCE_STALE_SECONDS', 86400),
     ],
-    'default_soft404_markers' => [
-        'not found',
-        'page not found',
-        '404',
-        'ページが見つかりません',
-        'ページが存在しません',
-        'お探しのページは見つかりませんでした',
-        '找不到页面',
-        '找不到頁面',
-    ],
 ];

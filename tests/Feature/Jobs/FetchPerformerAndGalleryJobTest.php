@@ -219,7 +219,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
 
     private function source(string $slug): Source
     {
-        return Source::factory()->create(['slug' => $slug, 'circuit_state' => Source::CIRCUIT_CLOSED]);
+        return Source::factory()->create(['slug' => $slug]);
     }
 
     private function fakeClient(

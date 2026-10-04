@@ -10,7 +10,6 @@ use App\Models\CrawlRun;
 use App\Models\Source;
 use App\Observability\ObservabilityEmitter;
 use App\Services\Crawl\CrawlQueueService;
-use App\Services\Crawl\SourceCircuitBreaker;
 use App\Services\Crawl\SourceThrottle;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Event;
@@ -23,7 +22,6 @@ final class SeedCommand extends Command
 
     public function handle(
         CrawlQueueService $queue,
-        SourceCircuitBreaker $breaker,
         SourceThrottle $throttle,
         ObservabilityEmitter $observability,
     ): int {
@@ -37,10 +35,6 @@ final class SeedCommand extends Command
             ->get();
 
         foreach ($sources as $source) {
-            if (! $breaker->isAvailable($source)) {
-                continue;
-            }
-
             $this->enqueueSourceSeeds($source, $limit, $queue, $throttle, $observability);
         }
 

@@ -40,7 +40,6 @@ final class WatchdogCommand extends Command
                 $query->whereNull('last_success_at')
                     ->orWhere('last_success_at', '<', $cutoff);
             })
-            ->where('circuit_state', '!=', Source::CIRCUIT_OPEN)
             ->pluck('slug');
 
         foreach ($staleSources as $slug) {

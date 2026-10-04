@@ -295,7 +295,7 @@ final class McpToolServiceTest extends TestCase
     public function test_crawl_status_returns_queue_sources_and_workers(): void
     {
         Movie::factory()->count(2)->create();
-        $source = Source::factory()->create(['circuit_state' => Source::CIRCUIT_OPEN]);
+        $source = Source::factory()->create();
         CrawlQueue::factory()->create([
             'source_slug' => $source->slug,
             'kind' => CrawlQueue::KIND_DETAIL,
@@ -307,7 +307,7 @@ final class McpToolServiceTest extends TestCase
 
         $this->assertSame(2, $payload['counts']['movies']);
         $this->assertSame(1, $payload['queue']['by_status']['pending']);
-        $this->assertSame(Source::CIRCUIT_OPEN, $payload['sources'][0]['circuit_state']);
+        $this->assertSame('closed', $payload['sources'][0]['circuit_state'], 'deprecated key kept stable');
         $this->assertSame('worker-a', $payload['workers'][0]['instance']);
         $this->assertFalse($payload['workers'][0]['stale']);
     }

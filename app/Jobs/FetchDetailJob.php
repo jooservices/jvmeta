@@ -11,7 +11,7 @@ use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
@@ -51,7 +51,7 @@ final class FetchDetailJob implements ShouldQueue
     public function handle(
         CrawlerxClient $client,
         SourceNormalizerRegistry $registry,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
         $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_DETAIL);
@@ -69,7 +69,7 @@ final class FetchDetailJob implements ShouldQueue
 
         $result = $client->fetchDetail($row->source_slug, $row->url);
         if (! $result->ok || $result->movie === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -78,7 +78,7 @@ final class FetchDetailJob implements ShouldQueue
         if ($normalizer === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'no_normalizer']);
             $this->markFailed($row, 'No normalizer for source slug.');
-            $breaker->recordFailure($source, 'No normalizer for source slug.');
+            $activity->recordFailure($source, 'No normalizer for source slug.');
             $throttle->onFailure($source);
 
             return;
@@ -95,7 +95,7 @@ final class FetchDetailJob implements ShouldQueue
         } catch (NormalizationFailedException $exception) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $exception->getMessage()]);
             $this->markFailed($row, $exception->getMessage());
-            $breaker->recordFailure($source, $exception->getMessage());
+            $activity->recordFailure($source, $exception->getMessage());
             $throttle->onFailure($source);
 
             return;
@@ -103,7 +103,7 @@ final class FetchDetailJob implements ShouldQueue
 
         $this->deliverDraft($draft);
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->onCrawlSuccess($row);
         $this->markDone($row);

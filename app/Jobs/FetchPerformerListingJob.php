@@ -10,7 +10,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
 use App\Support\Crawl\LaravelCrawlQueue;
@@ -43,7 +43,7 @@ final class FetchPerformerListingJob implements ShouldQueue
         return [TraceCrawlJob::class];
     }
 
-    public function handle(CrawlerxClient $client, CrawlQueueService $queue, SourceCircuitBreaker $breaker, SourceThrottle $throttle): void
+    public function handle(CrawlerxClient $client, CrawlQueueService $queue, SourceActivityRecorder $activity, SourceThrottle $throttle): void
     {
         $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_PERFORMER_LISTING);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_PERFORMER_LISTING) {
@@ -60,7 +60,7 @@ final class FetchPerformerListingJob implements ShouldQueue
 
         $result = $client->fetchPerformerListing($row->source_slug, $row->url);
         if (! $result->ok || $result->list === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -89,7 +89,7 @@ final class FetchPerformerListingJob implements ShouldQueue
             ]);
         }
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->markDone($row);
     }

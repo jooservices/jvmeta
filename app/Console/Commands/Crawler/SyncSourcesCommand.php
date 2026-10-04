@@ -40,13 +40,9 @@ final class SyncSourcesCommand extends Command
                     'gap_seconds_min' => (float) Arr::get($source, 'gap_seconds_min', config('jvmeta_sources.defaults.fallback_gap_seconds.min', 30)),
                     'gap_seconds_max' => (float) Arr::get($source, 'gap_seconds_max', config('jvmeta_sources.defaults.fallback_gap_seconds.max', 120)),
                     'gap_seconds_current' => $existing instanceof Source ? $existing->gap_seconds_current : $defaultGap,
-                    'consecutive_failures' => $existing instanceof Source ? $existing->consecutive_failures : 0,
-                    'circuit_state' => $existing instanceof Source ? $existing->circuit_state : Source::CIRCUIT_CLOSED,
-                    'circuit_opened_at' => $existing instanceof Source ? $existing->circuit_opened_at : null,
                     'last_success_at' => $existing instanceof Source ? $existing->last_success_at : null,
                     'last_error_at' => $existing instanceof Source ? $existing->last_error_at : null,
                     'last_error' => $existing instanceof Source ? $existing->last_error : null,
-                    'soft404_markers' => $existing instanceof Source ? $existing->soft404_markers : null,
                 ],
             );
         }

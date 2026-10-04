@@ -56,7 +56,7 @@ final class FetchListingJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/new?page=2', 'kind' => CrawlQueue::KIND_LISTING]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => 'listing_parsed']);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'circuit_state' => Source::CIRCUIT_CLOSED, 'consecutive_failures' => 0]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         self::assertLessThan(2.0, (float) $source->refresh()->gap_seconds_current);
     }
@@ -181,7 +181,7 @@ final class FetchListingJobTest extends TestCase
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'last_error' => 'Blocked by site.']);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1, 'circuit_state' => Source::CIRCUIT_CLOSED]);
+        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'last_error' => 'Blocked by site.']);
         self::assertSame(4.0, (float) $source->refresh()->gap_seconds_current);
     }
 

@@ -44,9 +44,6 @@ final class SyncSourcesCommandTest extends TestCase
         $existingSource = Source::factory()->create([
             'slug' => $sourceSlug,
             'gap_seconds_current' => fake()->randomFloat(2, 10, 60),
-            'consecutive_failures' => fake()->numberBetween(1, 3),
-            'circuit_state' => Source::CIRCUIT_OPEN,
-            'circuit_opened_at' => now()->subMinute(),
             'last_error' => fake()->sentence(),
         ]);
 
@@ -58,8 +55,6 @@ final class SyncSourcesCommandTest extends TestCase
         $this->assertSame($baseUrl, $source->base_url);
         $this->assertEquals($gapSeconds, $source->gap_seconds_default);
         $this->assertEquals($existingSource->gap_seconds_current, $source->gap_seconds_current);
-        $this->assertSame($existingSource->consecutive_failures, $source->consecutive_failures);
-        $this->assertSame(Source::CIRCUIT_OPEN, $source->circuit_state);
         $this->assertSame($existingSource->last_error, $source->last_error);
         $this->assertDatabaseHas('sources', [
             'slug' => $newSourceSlug,

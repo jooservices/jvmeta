@@ -7,7 +7,6 @@ namespace Tests\Feature\Crawl;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\CrawlRun;
-use App\Models\Source;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -29,20 +28,6 @@ final class SeedCommandTest extends TestCase
         ]);
         $this->assertSame(1, CrawlRun::query()->where('source_slug', 'javdb')->count());
         $this->assertSame(1, CrawlEvent::query()->where('source_slug', 'javdb')->where('kind', 'queue_tick')->count());
-    }
-
-    public function test_seed_skips_open_circuit_source_without_blocking_other_sources(): void
-    {
-        $this->syncSources();
-        Source::query()->whereKey('javdb')->update([
-            'circuit_state' => Source::CIRCUIT_OPEN,
-            'circuit_opened_at' => now(),
-        ]);
-
-        $this->artisan('crawler:seed', ['--limit' => 1])->assertSuccessful();
-
-        $this->assertDatabaseMissing('crawl_queue', ['source_slug' => 'javdb']);
-        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'javdatabase']);
     }
 
     public function test_seed_deduplicates_listing_urls_across_runs(): void

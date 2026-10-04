@@ -27,8 +27,6 @@ final class CrawlQueueServiceClaimTest extends TestCase
             'gap_seconds_min' => 1,
             'gap_seconds_max' => 10,
             'gap_seconds_current' => 1,
-            'consecutive_failures' => 0,
-            'circuit_state' => Source::CIRCUIT_CLOSED,
         ]);
 
         CrawlQueue::query()->create([

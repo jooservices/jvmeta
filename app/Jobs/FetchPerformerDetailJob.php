@@ -10,7 +10,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\PerformerDraftSink;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Normalize\PerformerNormalizer;
@@ -47,7 +47,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
     public function handle(
         CrawlerxClient $client,
         PerformerNormalizer $normalizer,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
         $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_PERFORMER_DETAIL);
@@ -65,7 +65,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
 
         $result = $client->fetchPerformerDetail($row->source_slug, $row->url);
         if (! $result->ok || $result->performer === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -74,7 +74,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         if ($draft === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'performer_normalize_failed']);
             $this->markFailed($row, 'Performer normalization failed.');
-            $breaker->recordFailure($source, 'Performer normalization failed.');
+            $activity->recordFailure($source, 'Performer normalization failed.');
             $throttle->onFailure($source);
 
             return;
@@ -85,7 +85,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
             $sink->accept($draft);
         }
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->markDone($row);
     }

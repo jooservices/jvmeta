@@ -404,8 +404,6 @@ final class MoviePersisterTest extends TestCase
         $source->refresh();
         $this->assertLessThan(20.0, (float) $source->gap_seconds_current);
         $this->assertNotNull($source->last_success_at);
-        $this->assertSame(Source::CIRCUIT_CLOSED, $source->circuit_state);
-        $this->assertSame(0, $source->consecutive_failures);
     }
 
     public function test_variants_from_two_sources_resolve_to_one_movie_row(): void

@@ -16,13 +16,11 @@ use Illuminate\Support\Facades\Event;
  */
 final class TitleFailureTracker
 {
-    public function __construct(private readonly Soft404Detector $soft404) {}
-
     public function recordFailure(string $sourceSlug, string $url, ?string $errorMessage = null, bool $soft404 = false): void
     {
         $movie = $this->movieForUrl($sourceSlug, $url);
         $threshold = max(1, (int) config('jvmeta_alerts.title_failure_threshold', 3));
-        $isSoft404 = $soft404 || $this->soft404->matches($errorMessage, $sourceSlug);
+        $isSoft404 = $soft404;
 
         if ($isSoft404 && $movie instanceof Movie) {
             if ($movie->delisted_at === null) {

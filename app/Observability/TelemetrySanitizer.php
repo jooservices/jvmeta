@@ -58,7 +58,6 @@ final class TelemetrySanitizer
         'queue',
         'field',
         'tier',
-        'circuit_state',
         'queued',
         'gap_seconds',
         'items',

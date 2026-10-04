@@ -9,8 +9,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Observability\ObservabilityEmitter;
 use App\Models\Source;
-use App\Services\Crawl\Soft404Detector;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\TitleFailureTracker;
 use App\Services\Crawler\CrawlerxClient;
@@ -20,7 +19,7 @@ use Illuminate\Support\Facades\Event;
 /**
  * Shared crawl_queue row bookkeeping for the fetch jobs: row lookup, terminal
  * state transitions, crawlerx-driven retry scheduling, crawl event recording,
- * and the per-source failure bookkeeping (throttle, circuit breaker).
+ * and the per-source bookkeeping (throttle, last success / error).
  *
  * attempts is incremented once per execution by CrawlQueueService::claimNext.
  */
@@ -108,13 +107,12 @@ trait HandlesCrawlQueueRow
         CrawlQueue $row,
         Source $source,
         CrawlerxFetchResult $result,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
         $errorCode = $result->errorCode ?? CrawlerxClient::ERROR_PARSE_FAILED;
         $message = $result->errorMessage ?? 'Crawl failed.';
-        $soft404 = app(Soft404Detector::class)->matches($message, $source)
-            || in_array($errorCode, [CrawlerxClient::ERROR_SOFT404, CrawlerxClient::ERROR_NOT_FOUND, CrawlerxClient::ERROR_GONE], true);
+        $soft404 = in_array($errorCode, [CrawlerxClient::ERROR_SOFT404, CrawlerxClient::ERROR_NOT_FOUND, CrawlerxClient::ERROR_GONE], true);
 
         $this->recordEvent($row->source_slug, $this->eventKind($errorCode, $soft404), $row->url, [
             'error_code' => $errorCode,
@@ -129,7 +127,7 @@ trait HandlesCrawlQueueRow
             $this->markFailed($row, $message);
         }
 
-        $breaker->recordFailure($source, $message);
+        $activity->recordFailure($source, $message);
         $throttle->onFailure($source);
 
         if (in_array($row->kind, [CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_PERFORMER_DETAIL], true)) {

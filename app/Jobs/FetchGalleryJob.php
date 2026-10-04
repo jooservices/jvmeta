@@ -9,7 +9,7 @@ use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Persist\GalleryPersister;
@@ -46,7 +46,7 @@ final class FetchGalleryJob implements ShouldQueue
     public function handle(
         CrawlerxClient $client,
         GalleryPersister $persister,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
         $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_GALLERY);
@@ -64,7 +64,7 @@ final class FetchGalleryJob implements ShouldQueue
 
         $result = $client->fetchGallery($row->source_slug, $row->url);
         if (! $result->ok || $result->gallery === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -76,7 +76,7 @@ final class FetchGalleryJob implements ShouldQueue
             'title' => $result->gallery->title,
         ]);
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->markDone($row);
     }

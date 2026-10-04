@@ -59,27 +59,12 @@ final class PublishMetricsCommand extends Command
     private function sourceMetrics(): array
     {
         $points = [];
-        $circuitMap = [
-            Source::CIRCUIT_CLOSED => 0,
-            Source::CIRCUIT_HALF_OPEN => 1,
-            Source::CIRCUIT_OPEN => 2,
-        ];
 
         foreach (Source::query()->get() as $source) {
             $labels = ['source_slug' => $source->slug];
             $points[] = [
-                'name' => 'jvmeta_source_circuit_state',
-                'value' => $circuitMap[$source->circuit_state] ?? -1,
-                'labels' => $labels,
-            ];
-            $points[] = [
                 'name' => 'jvmeta_source_gap_seconds',
                 'value' => (float) $source->gap_seconds_current,
-                'labels' => $labels,
-            ];
-            $points[] = [
-                'name' => 'jvmeta_source_consecutive_failures',
-                'value' => (int) $source->consecutive_failures,
                 'labels' => $labels,
             ];
             $age = $source->last_success_at !== null

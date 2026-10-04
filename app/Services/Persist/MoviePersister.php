@@ -18,7 +18,7 @@ use App\Models\MovieGenre;
 use App\Models\MovieMedia;
 use App\Models\MovieObservation;
 use App\Models\MoviePerformer;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Merge\ConflictPolicy;
@@ -69,7 +69,7 @@ final class MoviePersister implements MovieDraftSink
         private readonly ConflictPolicy $policy,
         private readonly CompletenessTierCalculator $tierCalculator,
         private readonly SourceThrottle $throttle,
-        private readonly SourceCircuitBreaker $breaker,
+        private readonly SourceActivityRecorder $activity,
         private readonly \App\Services\Archive\MongoSiteArchive $archive,
         private readonly \App\Services\Search\ElasticsearchIndexer $searchIndex,
     ) {}
@@ -530,7 +530,7 @@ final class MoviePersister implements MovieDraftSink
         }
 
         $this->throttle->onSuccess($sourceSlug);
-        $this->breaker->recordSuccess($sourceSlug);
+        $this->activity->recordSuccess($sourceSlug);
     }
 
     private function nullableTrim(?string $value): ?string

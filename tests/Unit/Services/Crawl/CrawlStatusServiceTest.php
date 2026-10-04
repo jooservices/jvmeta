@@ -26,8 +26,6 @@ final class CrawlStatusServiceTest extends TestCase
         Performer::factory()->count(1)->create(['first_seen_at' => now()]);
         $source = Source::factory()->create([
             'slug' => 'javdb',
-            'circuit_state' => Source::CIRCUIT_HALF_OPEN,
-            'consecutive_failures' => 1,
         ]);
         CrawlQueue::factory()->create([
             'source_slug' => $source->slug,
@@ -61,8 +59,8 @@ final class CrawlStatusServiceTest extends TestCase
         $this->assertSame(1, $payload['queue']['by_status']['pending']);
         $this->assertSame(1, $payload['queue']['by_status']['claimed']);
         $this->assertSame(0, $payload['queue']['stuck_claimed']);
-        $this->assertSame(Source::CIRCUIT_HALF_OPEN, $payload['sources'][0]['circuit_state']);
-        $this->assertSame(1, $payload['sources'][0]['consecutive_failures']);
+        $this->assertSame('closed', $payload['sources'][0]['circuit_state'], 'deprecated, constant');
+        $this->assertSame(0, $payload['sources'][0]['consecutive_failures'], 'deprecated, constant');
         $this->assertSame('node-a:100', $payload['workers'][0]['instance']);
         $this->assertSame(1, $payload['workers'][0]['active_claims']);
         $this->assertSame(1, $payload['runs_24h']['runs']);

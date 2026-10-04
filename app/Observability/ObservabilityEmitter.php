@@ -50,21 +50,6 @@ final class ObservabilityEmitter
         ]);
     }
 
-    public function emitCircuitTransition(string $sourceSlug, string $from, string $to, int $consecutiveFailures = 0): void
-    {
-        if ($from === $to) {
-            return;
-        }
-
-        $this->emit([
-            'event' => 'circuit_transition',
-            'source_slug' => $sourceSlug,
-            'from' => $from,
-            'to' => $to,
-            'consecutive_failures' => $consecutiveFailures,
-        ]);
-    }
-
     /**
      * @param  list<array<string, mixed>>  $attempts  crawlerx fetch attempts (method, elapsed_ms, status, challenge, ok)
      */
