@@ -13,6 +13,7 @@ use App\Models\MoviePerformer;
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\DependencyMonitorTestHelper;
 use Tests\TestCase;
 
 final class MovieSearchControllerTest extends TestCase
@@ -28,6 +29,7 @@ final class MovieSearchControllerTest extends TestCase
         parent::setUp();
 
         $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        DependencyMonitorTestHelper::bind();
     }
 
     public function test_movies_require_api_key(): void

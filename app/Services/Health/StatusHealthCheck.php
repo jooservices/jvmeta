@@ -7,27 +7,37 @@ namespace App\Services\Health;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\WorkerHeartbeat;
-use Illuminate\Support\Facades\DB;
-use Throwable;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
 
 final class StatusHealthCheck
 {
-    public function __construct(private readonly WorkerHeartbeat $heartbeat) {}
+    public function __construct(
+        private readonly WorkerHeartbeat $heartbeat,
+        private readonly DependencyMonitor $dependencies,
+    ) {}
 
     /**
-     * @return array{
-     *   status: string,
-     *   checked_at: string,
-     *   database: string,
-     *   worker: array{last_heartbeat_at: string|null, stale: bool},
-     *   instances: list<array{instance: string, last_heartbeat_at: string|null, stale: bool}>,
-     *   queue: array{pending: int, claimed: int, failed: int},
-     *   sources: list<array{slug: string, circuit_state: string, last_success_at: string|null, last_error_at: string|null, consecutive_failures: int}>
-     * }
+     * @return array<string, mixed>
      */
     public function check(): array
     {
-        $database = $this->databaseStatus();
+        $dependencyStatuses = $this->dependencies->statuses();
+        $database = ($dependencyStatuses[Dependency::Postgres->value]['available'] ?? false) ? 'ok' : 'down';
+
+        if ($database === 'down') {
+            return [
+                'status' => 'down',
+                'checked_at' => now()->toIso8601String(),
+                'database' => $database,
+                'worker' => ['last_heartbeat_at' => null, 'stale' => true],
+                'instances' => [],
+                'queue' => ['pending' => 0, 'claimed' => 0, 'failed' => 0],
+                'sources' => [],
+                'dependencies' => $dependencyStatuses,
+            ];
+        }
+
         $sources = Source::query()
             ->orderBy('priority')
             ->orderBy('slug')
@@ -70,12 +80,23 @@ final class StatusHealthCheck
             }
         }
 
-        $status = 'ok';
-        if ($database !== 'ok') {
-            $status = 'down';
-        } elseif ($anyOpen || $workerStale) {
-            $status = 'degraded';
+        $hardDependencyDown = false;
+        $softDependencyDown = false;
+        foreach ($dependencyStatuses as $dependencyStatus) {
+            if ($dependencyStatus['available']) {
+                continue;
+            }
+
+            if ($dependencyStatus['hard']) {
+                $hardDependencyDown = true;
+            } else {
+                $softDependencyDown = true;
+            }
         }
+
+        $status = $hardDependencyDown
+            ? 'down'
+            : (($softDependencyDown || $anyOpen || $workerStale) ? 'degraded' : 'ok');
 
         return [
             'status' => $status,
@@ -88,17 +109,7 @@ final class StatusHealthCheck
             'instances' => $this->heartbeat->instances($staleSeconds),
             'queue' => $queue,
             'sources' => $sourceRows,
+            'dependencies' => $dependencyStatuses,
         ];
-    }
-
-    private function databaseStatus(): string
-    {
-        try {
-            DB::connection()->getPdo();
-
-            return 'ok';
-        } catch (Throwable) {
-            return 'down';
-        }
     }
 }

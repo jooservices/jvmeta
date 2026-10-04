@@ -6,13 +6,23 @@ namespace Tests\Feature\Health;
 
 use App\Models\Source;
 use App\Services\Crawl\WorkerHeartbeat;
+use App\Services\Dependencies\Dependency;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Tests\Support\DependencyMonitorTestHelper;
 use Tests\TestCase;
 
 final class HealthControllerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        DependencyMonitorTestHelper::bind();
+    }
 
     public function test_health_is_public_and_includes_source_status(): void
     {
@@ -57,5 +67,53 @@ final class HealthControllerTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('status', 'degraded')
             ->assertJsonPath('worker.stale', true);
+    }
+
+    public function test_health_reports_each_dependency_with_state_and_hardness(): void
+    {
+        DependencyMonitorTestHelper::bind([Dependency::Elasticsearch->value => false]);
+
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('dependencies.postgres.state', 'healthy')
+            ->assertJsonPath('dependencies.postgres.hard', true)
+            ->assertJsonPath('dependencies.redis.state', 'healthy')
+            ->assertJsonPath('dependencies.elasticsearch.state', 'down')
+            ->assertJsonPath('dependencies.elasticsearch.hard', false)
+            ->assertJsonPath('dependencies.mongo.state', 'healthy')
+            ->assertJsonPath('dependencies.embedder.state', 'healthy')
+            ->assertJsonPath('dependencies.observability.state', 'healthy');
+    }
+
+    public function test_health_skips_database_dependent_queries_when_postgres_is_down(): void
+    {
+        DependencyMonitorTestHelper::bind([Dependency::Postgres->value => false]);
+        $queries = [];
+        DB::listen(static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $this->getJson('/api/health')
+            ->assertServiceUnavailable()
+            ->assertJsonPath('status', 'down')
+            ->assertJsonPath('database', 'down')
+            ->assertJsonPath('queue.pending', 0)
+            ->assertJsonPath('dependencies.postgres.state', 'down');
+
+        self::assertSame([], $queries);
+    }
+
+    public function test_live_health_is_process_only_and_never_checks_dependencies(): void
+    {
+        $monitor = DependencyMonitorTestHelper::bind(array_fill_keys(
+            array_map(static fn(Dependency $dependency): string => $dependency->value, Dependency::cases()),
+            false,
+        ));
+
+        $this->getJson('/api/health/live')
+            ->assertOk()
+            ->assertJsonPath('status', 'ok');
+
+        self::assertSame('unknown', $monitor->state(Dependency::Postgres));
     }
 }
