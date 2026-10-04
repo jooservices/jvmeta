@@ -29,7 +29,6 @@ x-php-service: &php-service
 services:
   api:
     <<: *php-service
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     ports:
       - "${JVMETA_API_BIND:-127.0.0.1:8080}:8080"
@@ -37,11 +36,9 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-    depends_on:
-      embedder:
-        condition: service_healthy
+      JVMETA_ROLE: api
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -51,29 +48,23 @@ services:
 
   scheduler:
     <<: *php-service
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "schedule:work"]
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-    depends_on:
-      embedder:
-        condition: service_healthy
+      JVMETA_ROLE: scheduler
     profiles:
       - control
 
   mcp:
     <<: *php-service
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "mcp:serve"]
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-    depends_on:
-      embedder:
-        condition: service_healthy
+      JVMETA_ROLE: mcp
     profiles:
       - control
 
@@ -111,12 +102,12 @@ services:
 
   worker:
     <<: *php-service
-    entrypoint: ["ready-check"]
     command: ["crawlerx-fetch-ready", "worker-queues"]
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "true"
+      JVMETA_ROLE: worker
     depends_on:
       - flaresolverr
     shm_size: 1gb

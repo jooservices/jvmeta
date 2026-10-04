@@ -64,6 +64,7 @@ services:
     volumes:
       - ../..:/app
       - jvmeta-ci-composer-cache:/tmp/composer-cache
+      - "${JVMETA_INTEGRATION_SIGNAL_DIR:-/tmp/jvmeta-integration-signal}:/tmp/jvmeta-integration-signal"
     environment:
       HOME: /tmp
       DB_HOST: postgres

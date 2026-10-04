@@ -44,7 +44,6 @@ x-app-environment: &app-environment
 x-worker: &worker
   image: jooservices/jvmeta:php85
   working_dir: /var/www/html
-  entrypoint: ["ready-check"]
   command: ["crawlerx-fetch-ready", "worker-queues"]
   env_file:
     - .env
@@ -61,21 +60,30 @@ services:
       context: .
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     env_file:
       - .env
     environment:
       <<: *app-environment
+      JVMETA_ROLE: api
     volumes: *app-volumes
     ports:
       - "8080:8080"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     profiles:
       - app
 
   worker:
     <<: *worker
+    environment:
+      <<: *app-environment
+      JVMETA_ROLE: worker
 
   embedder:
     build:
@@ -90,12 +98,12 @@ services:
   scheduler:
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "schedule:work"]
     env_file:
       - .env
     environment:
       <<: *app-environment
+      JVMETA_ROLE: scheduler
     volumes: *app-volumes
     restart: unless-stopped
     profiles:
@@ -104,12 +112,12 @@ services:
   mcp:
     image: jooservices/jvmeta:php85
     working_dir: /var/www/html
-    entrypoint: ["ready-check"]
     command: ["php", "artisan", "mcp:serve"]
     env_file:
       - .env
     environment:
       <<: *app-environment
+      JVMETA_ROLE: mcp
     volumes: *app-volumes
     stdin_open: true
     tty: true
