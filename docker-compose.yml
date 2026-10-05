@@ -27,10 +27,12 @@ x-app-environment: &app-environment
   EMBEDDER_URL: ${EMBEDDER_URL:-http://embedder:8000}
   EMBEDDER_DIM: ${EMBEDDER_DIM:-384}
   CRAWLERX_ROOT: /var/www/html/vendor/jooservices/crawlerx
-  CRAWLERX_NODE: node
+  # Empty overrides a stale env_file value. crawlerx 1.3 treats "" as unset.
+  CRAWLERX_NODE: ""
   CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs
   CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
-  CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
+  CRAWLERX_FLARESOLVERR_URL: &flare_url ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
+  FLARESOLVERR_URL: *flare_url
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   JVMETA_WORKERS_PER_QUEUE: ${JVMETA_WORKERS_PER_QUEUE:-1}
   JVMETA_QUEUE_NAMES: ${JVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}

@@ -6,16 +6,23 @@ namespace Tests\Unit\Providers;
 
 use App\Services\Crawler\LaravelConfigLoginCookieProvider;
 use JOOservices\CrawlerX\CrawlerXFactory;
-use Psr\SimpleCache\CacheInterface;
+use ReflectionClass;
 use ReflectionProperty;
 use Tests\TestCase;
 
 final class CrawlerxServiceProviderTest extends TestCase
 {
-    public function test_boot_configures_crawlerx_with_cache_and_login_cookies(): void
+    public function test_boot_wires_login_cookies_and_keeps_sessions_in_the_worker(): void
     {
-        self::assertInstanceOf(CacheInterface::class, $this->factoryProperty('sessionCache'));
         self::assertInstanceOf(LaravelConfigLoginCookieProvider::class, $this->factoryProperty('loginCookieProvider'));
+
+        $factory = new ReflectionClass(CrawlerXFactory::class);
+
+        if (! $factory->hasProperty('sessionCache')) {
+            return;
+        }
+
+        self::assertNull($factory->getProperty('sessionCache')->getValue());
     }
 
     private function factoryProperty(string $name): mixed
